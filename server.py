@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import secrets
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +16,8 @@ import aiohttp
 from aiohttp import web
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))  # Windows embedded Python omits the script directory.
+from workflow_edit import DOCUMENTS, apply_node_inputs, apply_documents
 CONFIG = json.loads((ROOT / 'config.json').read_text(encoding='utf-8-sig')) if (ROOT / 'config.json').is_file() else {}
 COMFY = Path(os.environ.get('GIMMEMUSIC_COMFY_ROOT') or CONFIG.get('comfy_root') or ROOT.parent / 'Plenio-Portable/ComfyUI_windows_portable/ComfyUI').resolve()
 OUTPUT = COMFY / 'output'
@@ -64,7 +67,13 @@ def default_form(profile):
                 lyrics, lyrics_mode = entry.get('text', ''), 'manual'
     source = next((n['inputs'].get('audio', '') for n in prompt.values() if n['class_type'] == 'LoadAudio'), '')
     seeds = [n['inputs'].get('seed', 0) for n in prompt.values() if n['class_type'] == 'SeedNode']
-    return {'fields': {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, 'lyrics': lyrics,
+    title = fields.get('title', '')
+    for n in prompt.values():
+        if n['class_type'] == 'PlenioSongSheet':
+            entry = json.loads(n['inputs'].get('sheet_state') or '{}').get('docs', {}).get('title', {})
+            if entry.get('state') == 'manual':
+                title = entry.get('text', '')
+    return {'title': title, 'fields': {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, 'lyrics': lyrics,
             'lyricsMode': lyrics_mode, 'source': source, 'seed': seeds[-1] if seeds else 0}
 
 
@@ -79,8 +88,9 @@ def vocal_fields(node, schema):
 def build_prompt(profile, params, schema=None):
     """Only scalar run inputs change; every class and connection stays intact."""
     prompt = copy.deepcopy(profile['prompt'])
+    apply_node_inputs(prompt, params.get('nodeInputs', {}), schema or {})
     _, node = brief_node(prompt)
-    permitted = {'description', 'genre', 'mood', 'tempo', 'length', 'mode', 'title', 'vocals',
+    permitted = {'description', 'genre', 'mood', 'tempo', 'length', 'mode', 'title', 'template', 'vocals',
                  'vocals.language', 'vocals.voice', 'vocals.theme', 'harmony', 'key', 'meter'}
     if node:
         for key, value in params.get('fields', {}).items():
@@ -96,7 +106,7 @@ def build_prompt(profile, params, schema=None):
             value = params.get('fields', {}).get(name)
             if (spec[0] == 'BOOLEAN' and isinstance(value, bool)) or (spec[0] in ('STRING', 'COMBO') and isinstance(value, str)):
                 node['inputs'][name] = value
-    for n in prompt.values():
+    for node_id, n in prompt.items():
         inputs = n['inputs']
         if n['class_type'] == 'LoadAudio' and params.get('source'):
             source = str(params['source'])
@@ -120,8 +130,9 @@ def build_prompt(profile, params, schema=None):
                 if key in inputs and isinstance(inputs[key], int):
                     # Shared safe range includes PlenioRefine's uint32 limit.
                     inputs[key] = secrets.randbelow(2**32)
-        elif params.get('seed') is not None and n['class_type'] == 'SeedNode':
+        elif params.get('seed') is not None and n['class_type'] == 'SeedNode' and 'seed' not in params.get('nodeInputs', {}).get(node_id, {}):
             inputs['seed'] = int(params['seed'])
+    apply_documents(prompt, params.get('sheetEdits', {}), params.get('title'))
     return prompt
 
 
@@ -311,7 +322,7 @@ async def upload(request):
 
 async def generate(request):
     data = await request.json()
-    profile = studio.profiles[data['profile']]
+    profile, _ = editor_profile(data['profile'], data.get('baseTrack'))
     count = int(data.get('count', 1))
     if not 1 <= count <= 8:
         raise ValueError('Choose between 1 and 8 takes.')
@@ -342,8 +353,10 @@ async def jobs(request):
         review = []
         if record:
             job['status'] = record['status']['status_str']
+            job['sheets'] = []
             for node, out in record.get('outputs', {}).items():
                 for sheet in out.get('plenio_sheet', []):
+                    job['sheets'].append(dict(sheet, node=node))
                     if sheet.get('waiting'):
                         review.append(dict(sheet, node=node))
             messages = [m[1] for m in record['status'].get('messages', []) if m[0] == 'execution_error']
@@ -448,6 +461,55 @@ async def static(request):
     return web.FileResponse(path)
 
 
+def editor_profile(profile_id, track_id=None):
+    profile = studio.profiles[profile_id]
+    if not track_id:
+        return profile, {}
+    track = next((t for t in studio.library() if t['id'] == track_id), None)
+    if not track:
+        raise ValueError('The selected release is no longer in the library.')
+    record = read_json(contained(OUTPUT, track['recordPath']), {})
+    prompt = record.get('prompt', {})
+    _, brief = brief_node(prompt)
+    if not brief or ('cover' if brief['class_type'] == 'PlenioCoverBrief' else 'song') != profile_id:
+        raise ValueError('Choose the matching song or cover profile for this release.')
+    return {**profile, 'prompt': prompt}, record
+
+
+async def workbench(request):
+    profile, record = editor_profile(request.query['profile'], request.query.get('track'))
+    try:
+        studio.schema = await studio.engine('/object_info')
+    except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+        pass
+    nodes = []
+    for node_id, node in profile['prompt'].items():
+        nodes.append({'id': node_id, 'type': node['class_type'], 'title': node.get('_meta', {}).get('title') or node['class_type'],
+                      'inputs': node['inputs'], 'schema': studio.schema.get(node['class_type'], {}).get('input', {})})
+    return web.json_response({'nodes': nodes, 'defaults': default_form(profile), 'documents': record.get('documents', {}),
+                              'reports': record.get('reports', []), 'title': record.get('title', ''), 'schemaAvailable': bool(studio.schema)})
+
+
+async def validate_sheets(request):
+    data = await request.json()
+    profile, record = editor_profile(data['profile'], data.get('baseTrack'))
+    schema = await studio.engine('/object_info')
+    prompt = build_prompt(profile, {**data, 'randomize': False}, schema)
+    _, brief = brief_node(prompt)
+    results = []
+    for node_id, node in prompt.items():
+        if node['class_type'] != 'PlenioSongSheet':
+            continue
+        owned = [k for k in DOCUMENTS if k in node['inputs']]
+        upstream = {k: record.get('documents', {}).get(k, {}).get('text') for k in owned}
+        result = await studio.engine('/plenio/sheet/resolve', {'sheet_state': node['inputs'].get('sheet_state', ''),
+            'owned': owned, 'upstream': upstream, 'context': {k: v.get('text', '') for k, v in record.get('documents', {}).items() if k not in owned},
+            'review': node['inputs'].get('review', 'continue'), 'brief_mode': 'batch' if 'every run' in brief['inputs'].get('mode', '') else 'careful',
+            'engine': 'yue2', 'instrumental': brief['inputs'].get('vocals') == 'instrumental'})
+        results.append({'node': node_id, **result})
+    return web.json_response(results)
+
+
 async def lifecycle(app):
     studio.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     await studio.bootstrap()
@@ -462,6 +524,7 @@ def create_app():
     app = web.Application(middlewares=[errors], client_max_size=301 * 1024 * 1024)
     app.cleanup_ctx.append(lifecycle)
     app.add_routes([web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
+        web.get('/api/workbench', workbench), web.post('/api/sheets/validate', validate_sheets),
         web.post('/api/favorites/{id}', favorite), web.get('/api/inputs', inputs), web.post('/api/upload', upload),
         web.post('/api/generate', generate), web.get('/api/jobs', jobs), web.post('/api/jobs/{id}/approve', approve),
         web.post('/api/jobs/{id}/cancel', cancel), web.get('/api/waveform/{id}', waveform), web.get('/media/{path:.+}', media),

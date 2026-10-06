@@ -10,6 +10,9 @@ Compose songs, make covers, hunt for a great seed, and browse the music you crea
 - Sound descriptions, lyrics, cover audio uploads, and generation controls.
 - Randomized seeds and batches of 1–8 takes.
 - Generation queue and Song Sheet review/approval.
+- Song naming and a dedicated Song Sheet page for title, style, lyrics, native ABC score, and artwork prompts, with automatic/manual document modes and Plenio validation.
+- Workflow settings for schema-defined node controls: models, seeds, sampling, transcription, mixing, mastering, and export options. Connections remain read-only.
+- Inspect saved release documents/reports and load their exact graph and documents into a new take; review Song Sheets from studio runs.
 - Real Plenio exports with favorites, search, playback, waveforms, seeking, and downloads.
 - Local operation and locally bundled fonts; no hosted account required.
 
@@ -50,6 +53,8 @@ Uses curl, resumes partial downloads, and skips existing files. Downloads can be
 `patches/nominal-24gb-vram.patch` lets cards reporting slightly below 24 GiB attempt transcription of sources longer than 300 seconds. It changes a capacity check to 23.5 GiB; it does not lower actual memory use or guarantee a long cover will fit. It is **not applied automatically**. In a clean Plenio checkout matching the pinned commit, use `git apply <absolute-path-to-patch>`. Existing installations with this fix need no action.
 
 ## Development and testing
+
+**Editing:** use Song Sheet → Next take for documents, or Workflow settings for node controls. Drafts are saved in browser storage and apply to the next submission. Saved releases are immutable; **Use for next take** starts an editable draft using that release's graph. Set a sheet's review behavior to **stop for review** to pause generation for approval. **Validate Song Sheets** runs Plenio's document checks without submitting a render; automatic documents may remain unavailable until their upstream stages execute. Score editing uses native ABC text; graph rewiring and Plenio's visual piano roll remain in ComfyUI. Randomized seed hunting overrides individual seed values while enabled.
 
 ```powershell
 npm ci
