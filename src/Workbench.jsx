@@ -26,7 +26,7 @@ function Widget({name,value,spec,onChange,disabled}){
   return <input {...props} value={value??config.default??''} onChange={e=>onChange(e.target.value)}/>;
 }
 
-export default function Workbench({view,profile,profiles,form,setForm,loadProfile,tracks,selected,jobs,onReview,generate,busy,online,notify,randomize,setRandomize,count,setCount}){
+export default function Workbench({projectControls,view,profile,profiles,form,setForm,loadProfile,tracks,selected,jobs,onReview,generate,busy,online,notify,randomize,setRandomize,count,setCount}){
   const [source,setSource]=useState('draft'),[trackId,setTrackId]=useState(selected?.id||''),[data,setData]=useState(null),[error,setError]=useState(''),[validation,setValidation]=useState([]),[checking,setChecking]=useState(false),[search,setSearch]=useState('');
   const [runId,setRunId]=useState('');
   useEffect(()=>{if(!trackId&&selected?.id)setTrackId(selected.id)},[selected?.id,trackId]);
@@ -52,7 +52,7 @@ export default function Workbench({view,profile,profiles,form,setForm,loadProfil
     if(kind==='lyrics'&&form.lyricsMode==='auto')return {state:'auto'};
     return readState(node).docs?.[kind]||{state:'auto'};
   };
-  const setDoc=(node,kind,entry)=>setForm(old=>({...old,...(kind==='title'?{title:entry.state==='manual'?entry.text:''}:{}),...(kind==='lyrics'?{lyricsMode:'preserve'}:{}),sheetEdits:{...old.sheetEdits,[node.id]:{...old.sheetEdits?.[node.id],[kind]:entry}}}));
+  const setDoc=(node,kind,entry)=>setForm(old=>({...old,...(kind==='title'?{title:entry.state==='manual'?entry.text:''}:{}),...(kind==='lyrics'?{lyricsMode:'preserve',lyricsIntent:entry.state==='manual'?'custom':undefined,fields:{...old.fields,...(entry.state==='manual'?{vocals:profile.kind==='cover'?'new lyrics':'sung'}:{})}}:{}),sheetEdits:{...old.sheetEdits,[node.id]:{...old.sheetEdits?.[node.id],[kind]:entry}}}));
   const useRelease=()=>{
     const p=profiles.find(p=>p.id===releaseProfile);if(!p)return;
     loadProfile(p);
@@ -60,7 +60,7 @@ export default function Workbench({view,profile,profiles,form,setForm,loadProfil
     for(const node of data.nodes.filter(n=>n.type==='PlenioSongSheet')){
       sheetEdits[node.id]={};for(const kind of kinds)if(kind in node.inputs&&data.documents[kind]?.text!=null)sheetEdits[node.id][kind]={state:'manual',text:data.documents[kind].text};
     }
-    setForm({...data.defaults,baseTrack:trackId,sheetEdits,title:data.title||data.defaults.title,lyricsMode:'preserve'});setSource('draft');notify('Loaded the release’s graph and documents into your next take.');
+    setForm({...data.defaults,baseTrack:trackId,sheetEdits,title:data.title||data.defaults.title,lyricsMode:'preserve',projectId:track?.projectId||form.projectId||null});setSource('draft');notify('Loaded the release’s graph and documents into your next take.');
   };
   const validate=async()=>{
     setChecking(true);try{const r=await fetch('/api/sheets/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,profile:profile.id})});const d=await r.json();if(!r.ok)throw Error(d.error);setValidation(d)}catch(e){notify(e.message,'error')}finally{setChecking(false)}
@@ -74,6 +74,7 @@ export default function Workbench({view,profile,profiles,form,setForm,loadProfil
       {source==='draft'?<select aria-label="Editing workflow" value={profile?.id||''} onChange={e=>loadProfile(profiles.find(p=>p.id===e.target.value))}>{profiles.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>:source==='release'?<select aria-label="Saved release" value={trackId} onChange={e=>setTrackId(e.target.value)}><option value="">Choose a release</option>{tracks.map(t=><option key={t.id} value={t.id}>{t.title} · {new Date(t.mtime*1000).toLocaleString()}</option>)}</select>:<select aria-label="Run sheet" value={runId} onChange={e=>setRunId(e.target.value)}><option value="">Choose a run</option>{jobs.map(j=><option key={j.id} value={j.id}>{j.profile} · {new Date(j.created*1000).toLocaleString()} · {j.status}</option>)}</select>}
     </div>
     {source==='draft'&&<div className="bench-note">Draft saved in this browser. Changes apply when you create the next take.{form.baseTrack&&' Using the selected release’s saved graph.'} {view==='settings'&&'Seed hunting takes priority over node seed values when enabled.'}</div>}
+    {source==='draft'&&projectControls}
     {source==='draft'&&<div className="bench-run-controls"><select aria-label="Seed behavior" value={randomize?'random':'fixed'} onChange={e=>setRandomize(e.target.value==='random')}><option value="random">Seed hunting · randomize each take</option><option value="fixed">Use fixed seeds</option></select><select aria-label="Takes from editor" value={count} onChange={e=>setCount(Number(e.target.value))}>{[1,2,3,4,6,8].map(n=><option key={n} value={n}>{n} {n===1?'take':'takes'}</option>)}</select><button className="quiet-button" disabled={!profile} onClick={()=>setForm(structuredClone(profile.defaults))}><RotateCcw size={14}/> Restore defaults</button></div>}
     {source==='release'&&data&&trackId&&<div className="bench-actions"><span>Saved release · original documents and settings</span><button className="small-primary" onClick={useRelease}>Use for next take <ArrowRight size={15}/></button></div>}
     {error&&<p className="job-error">{error}</p>}

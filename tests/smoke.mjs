@@ -13,7 +13,7 @@ await page.getByRole('button',{name:'Pause',exact:true}).click();
 await page.getByPlaceholder(/Find your next favorite/).fill('unfindable-gimmemusic-test');
 await expect(page.getByText('No tracks found.')).toBeVisible();
 await page.getByPlaceholder(/Find your next favorite/).fill('');
-const heart=page.locator('.track').first().locator('.track-actions button');
+const heart=page.locator('.track').first().locator('.track-actions > button');
 const prior=await heart.getAttribute('aria-label');
 await heart.click();
 await expect(heart).not.toHaveAttribute('aria-label',prior);

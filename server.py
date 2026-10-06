@@ -27,6 +27,22 @@ DATA.mkdir(exist_ok=True)
 PROFILES = DATA / 'profiles.json'
 JOBS_FILE = DATA / 'jobs.json'
 FAVORITES = DATA / 'favorites.json'
+PROJECTS = DATA / 'projects.json'
+
+
+def project_store():
+    return read_json(PROJECTS, {'projects': {}, 'tracks': {}})
+
+
+def track_project(relative, track_id, store):
+    if track_id in store['tracks']:
+        return store['tracks'][track_id]
+    parts = Path(relative).parts
+    if 'gimmemusic-projects' in parts:
+        index = parts.index('gimmemusic-projects') + 1
+        if index < len(parts) and parts[index] in store['projects']:
+            return parts[index]
+    return None
 
 
 def read_json(path, default=None):
@@ -90,6 +106,12 @@ def build_prompt(profile, params, schema=None):
     prompt = copy.deepcopy(profile['prompt'])
     apply_node_inputs(prompt, params.get('nodeInputs', {}), schema or {})
     _, node = brief_node(prompt)
+    manual_lyrics = params.get('lyricsMode') == 'manual' or params.get('lyricsIntent') == 'custom'
+    if params.get('lyricsMode') == 'manual' and not str(params.get('lyrics', '')).strip():
+        raise ValueError('Paste lyrics, or choose automatic lyrics.')
+    if manual_lyrics and node:
+        params = copy.deepcopy(params)
+        params.setdefault('fields', {})['vocals'] = 'new lyrics' if node['class_type'] == 'PlenioCoverBrief' else 'sung'
     permitted = {'description', 'genre', 'mood', 'tempo', 'length', 'mode', 'title', 'template', 'vocals',
                  'vocals.language', 'vocals.voice', 'vocals.theme', 'harmony', 'key', 'meter'}
     if node:
@@ -132,7 +154,13 @@ def build_prompt(profile, params, schema=None):
                     inputs[key] = secrets.randbelow(2**32)
         elif params.get('seed') is not None and n['class_type'] == 'SeedNode' and 'seed' not in params.get('nodeInputs', {}).get(node_id, {}):
             inputs['seed'] = int(params['seed'])
-    apply_documents(prompt, params.get('sheetEdits', {}), params.get('title'))
+    sheet_edits = copy.deepcopy(params.get('sheetEdits', {}))
+    if params.get('lyricsMode') in ('manual', 'auto'):
+        for node_id, n in prompt.items():
+            if n['class_type'] == 'PlenioSongSheet' and 'lyrics' in n['inputs']:
+                sheet_edits.setdefault(node_id, {})['lyrics'] = ({'state': 'manual', 'text': params['lyrics']}
+                    if params['lyricsMode'] == 'manual' else {'state': 'auto'})
+    apply_documents(prompt, sheet_edits, params.get('title'))
     return prompt
 
 
@@ -167,6 +195,7 @@ class Studio:
         if not refresh and time.time() - self.catalogue_at < 8:
             return self.catalogue
         favorites = read_json(FAVORITES, [])
+        projects = project_store()
         tracks = []
         for file in OUTPUT.rglob('*.plenio.json'):
             if 'portable-test' in file.parts:
@@ -194,7 +223,7 @@ class Studio:
             tracks.append({'id': track_id, 'title': record.get('title') or file.stem, 'created': record.get('created', ''),
                            'mtime': file.stat().st_mtime, 'duration': record.get('audio', {}).get('seconds', 0),
                            'style': doc('style') or fields.get('description', ''), 'lyrics': doc('lyrics'), 'files': files,
-                           'favorite': track_id in favorites, 'seed': seeds[-1] if seeds else None,
+                           'favorite': track_id in favorites, 'seed': seeds[-1] if seeds else None, 'projectId': track_project(rel, track_id, projects),
                            'genre': fields.get('genre') or 'YuE2', 'kind': 'Cover' if brief and brief['class_type'] == 'PlenioCoverBrief' else 'Song',
                            'art': '/media/' + quote(cover.relative_to(OUTPUT).as_posix()) if cover else None,
                            'record': '/media/' + quote(rel), 'licenses': record.get('licences', []),
@@ -203,10 +232,12 @@ class Studio:
         self.catalogue_at = time.time()
         return self.catalogue
 
-    async def submit(self, prompt, profile, parent=None):
+    async def submit(self, prompt, profile, parent=None, project_id=None):
+        if parent and project_id is None:
+            project_id = self.jobs[parent].get('projectId')
         result = await self.engine('/prompt', {'prompt': prompt, 'client_id': self.client_id})
         pid = result['prompt_id']
-        self.jobs[pid] = {'id': pid, 'profile': profile, 'created': time.time(), 'status': 'queued', 'prompt': prompt, 'parent': parent}
+        self.jobs[pid] = {'id': pid, 'profile': profile, 'created': time.time(), 'status': 'queued', 'prompt': prompt, 'parent': parent, 'projectId': project_id}
         write_json(JOBS_FILE, self.jobs)
         return pid
 
@@ -327,10 +358,22 @@ async def generate(request):
     if not 1 <= count <= 8:
         raise ValueError('Choose between 1 and 8 takes.')
     schema = await studio.engine('/object_info')
+    project_id = data.get('projectId')
+    if project_id and project_id not in project_store()['projects']:
+        raise ValueError('Choose an existing project.')
     ids = []
     for _ in range(count):
         try:
-            ids.append(await studio.submit(build_prompt(profile, data, schema), profile['id']))
+            prompt = build_prompt(profile, data, schema)
+            if project_id:
+                for node in prompt.values():
+                    if node['class_type'] == 'PlenioExportRelease':
+                        node['inputs']['folder'] = 'plenio/gimmemusic-projects/' + project_id
+            else:
+                for node in prompt.values():
+                    if node['class_type'] == 'PlenioExportRelease' and '/gimmemusic-projects/' in node['inputs'].get('folder', ''):
+                        node['inputs']['folder'] = node['inputs']['folder'].split('/gimmemusic-projects/')[0] or 'plenio'
+            ids.append(await studio.submit(prompt, profile['id'], project_id=project_id))
         except (ValueError, aiohttp.ClientError, asyncio.TimeoutError) as error:
             message = (f'{len(ids)} take(s) were queued before submission stopped. ' if ids else '') + str(error)
             return web.json_response({'ids': ids, 'error': message}, status=400)
@@ -510,6 +553,43 @@ async def validate_sheets(request):
     return web.json_response(results)
 
 
+async def projects_api(request):
+    store = project_store()
+    if request.method == 'GET':
+        return web.json_response(list(store['projects'].values()))
+    data = await request.json()
+    project_id = data.get('id') or uuid.uuid4().hex
+    if data.get('id') and project_id not in store['projects']:
+        raise ValueError('Project not found.')
+    old = store['projects'].get(project_id, {})
+    name = str(data.get('name', old.get('name', ''))).strip()
+    if not name or len(name) > 120:
+        raise ValueError('Enter a project name between 1 and 120 characters.')
+    project = {**old, 'id': project_id, 'name': name, 'updated': time.time()}
+    if 'draft' in data:
+        if not isinstance(data['draft'], dict) or data['draft'].get('profile') not in studio.profiles:
+            raise ValueError('Choose a workflow before saving a draft.')
+        project['draft'] = data['draft']
+    store['projects'][project_id] = project
+    write_json(PROJECTS, store)
+    return web.json_response(project)
+
+
+async def assign_project(request):
+    track_id = request.match_info['id']
+    if not any(t['id'] == track_id for t in studio.library()):
+        raise ValueError('Track not found.')
+    data = await request.json()
+    store = project_store()
+    project_id = data.get('projectId') or None
+    if project_id and project_id not in store['projects']:
+        raise ValueError('Project not found.')
+    store['tracks'][track_id] = project_id
+    write_json(PROJECTS, store)
+    studio.catalogue_at = 0
+    return web.json_response({'ok': True})
+
+
 async def lifecycle(app):
     studio.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     await studio.bootstrap()
@@ -525,6 +605,7 @@ def create_app():
     app.cleanup_ctx.append(lifecycle)
     app.add_routes([web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
         web.get('/api/workbench', workbench), web.post('/api/sheets/validate', validate_sheets),
+        web.get('/api/projects', projects_api), web.post('/api/projects', projects_api), web.post('/api/tracks/{id}/project', assign_project),
         web.post('/api/favorites/{id}', favorite), web.get('/api/inputs', inputs), web.post('/api/upload', upload),
         web.post('/api/generate', generate), web.get('/api/jobs', jobs), web.post('/api/jobs/{id}/approve', approve),
         web.post('/api/jobs/{id}/cancel', cancel), web.get('/api/waveform/{id}', waveform), web.get('/media/{path:.+}', media),

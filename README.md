@@ -13,6 +13,8 @@ Compose songs, make covers, hunt for a great seed, and browse the music you crea
 - Song naming and a dedicated Song Sheet page for title, style, lyrics, native ABC score, and artwork prompts, with automatic/manual document modes and Plenio validation.
 - Workflow settings for schema-defined node controls: models, seeds, sampling, transcription, mixing, mastering, and export options. Connections remain read-only.
 - Inspect saved release documents/reports and load their exact graph and documents into a new take; review Song Sheets from studio runs.
+- Track three-dot menus with **Load in editor** and project assignment. Editing creates a new take without overwriting the source release.
+- Local projects with grouped tracks, recent generations, naming, and saved drafts (including lyrics, settings, seeds, and batch size).
 - Real Plenio exports with favorites, search, playback, waveforms, seeking, and downloads.
 - Local operation and locally bundled fonts; no hosted account required.
 
@@ -55,6 +57,10 @@ Uses curl, resumes partial downloads, and skips existing files. Downloads can be
 ## Development and testing
 
 **Editing:** use Song Sheet → Next take for documents, or Workflow settings for node controls. Drafts are saved in browser storage and apply to the next submission. Saved releases are immutable; **Use for next take** starts an editable draft using that release's graph. Set a sheet's review behavior to **stop for review** to pause generation for approval. **Validate Song Sheets** runs Plenio's document checks without submitting a render; automatic documents may remain unavailable until their upstream stages execute. Score editing uses native ABC text; graph rewiring and Plenio's visual piano roll remain in ComfyUI. Randomized seed hunting overrides individual seed values while enabled.
+
+**Cover lyrics:** choose Lyrics → Use my own lyrics and paste section-tagged lyrics, or load a track in the editor and edit its lyrics document. Custom lyrics select a sung cover mode and replace the source words at the Song Sheet. Use validation to check their compatibility with the source score.
+
+**Projects:** create a project from Projects, then choose it in the Generation project selector. New takes export under `plenio/gimmemusic-projects/<project-id>` and appear together, including approval continuations. Use a track's three-dot menu to assign existing releases without moving their audio. **Save draft** stores the current draft in the project; **Load saved draft** restores it. Saving drafts is explicit. Projects and assignments live in ignored `data/projects.json`, so they survive restarts and are not published to GitHub.
 
 ```powershell
 npm ci
