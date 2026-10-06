@@ -25,3 +25,6 @@
 .template-actions button:hover:not(:disabled) {color:#8bf2f3;border-color:#8bf2f355}.template-actions button:disabled {opacity:.35;cursor:default}
 .brief-template details {font-size:11px;color:#a897b5;line-height:1.6;margin-top:12px}.brief-template summary {cursor:pointer;color:#cbbad6}.brief-template p {overflow-wrap:anywhere}
 .original-lyrics p {color:#a897b5;font-size:11px;line-height:1.8}.original-lyrics textarea {min-height:290px}
+
+.cover-lyrics-entry {display:flex;align-items:center;gap:12px;width:100%;padding:15px;margin:0 0 22px;text-align:left;color:#8bf2f3;background:#8bf2f309;border:1px solid #8bf2f32b;border-radius:10px;cursor:pointer;font:inherit}
+.cover-lyrics-entry span {flex:1}.cover-lyrics-entry strong {display:block;font-size:12px}.cover-lyrics-entry small {display:block;font-size:10px;color:#b8a6c3;margin-top:5px}.cover-lyrics-entry:hover {background:#8bf2f315;border-color:#8bf2f377}

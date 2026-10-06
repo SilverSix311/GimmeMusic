@@ -4,6 +4,13 @@ try {
   const page=await browser.newPage({viewport:{width:1600,height:1000}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:8195');
+  await page.getByRole('button',{name:'New song',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Provide original lyrics',exact:false})).toHaveCount(0);
+  await page.getByRole('button',{name:'Make a cover',exact:true}).click();
+  await page.getByRole('button',{name:'Provide original lyrics',exact:false}).click();
+  await expect(page.getByLabel('Original lyrics',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Lyric source')).toHaveValue('original');
+  await page.locator('.composer-tabs').getByRole('button',{name:'Sound',exact:true}).click();
   await expect(page.getByLabel('Brief template')).toBeVisible();
   await page.getByLabel('Brief template').selectOption('metal/nu-metal-vocal');
   await page.getByRole('button',{name:'Reset all to template',exact:true}).click();
