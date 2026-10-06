@@ -34,7 +34,7 @@ cd GimmeMusic
 .\Setup-GimmeMusic.ps1 -ComfyRoot 'C:\ComfyUI_windows_portable\ComfyUI' -Python 'C:\ComfyUI_windows_portable\python_embeded\python.exe'
 ```
 
-Setup installs Plenio if missing, installs studio/transcription dependencies into the specified Python environment, adds Plenio's import path for embedded-Python workers, copies templates into a new `workflows/GimmeMusic` folder without overwriting files, saves ignored local configuration, and builds the frontend. Existing Plenio checkouts stay unchanged. Use `-SkipDependencies` for an already provisioned runtime or `-SkipBuild` if already built.
+Setup installs Plenio if missing, installs studio/transcription dependencies into the specified Python environment, adds Plenio's import path for embedded-Python workers, copies templates into a new `workflows/GimmeMusic` folder without overwriting files, saves ignored local configuration, and builds the frontend. Setup applies the version-checked original-lyrics extension to Plenio. It preserves saved workflow files and existing unrelated patches; incompatible node versions fail before applying the patch. Use `-SkipDependencies` for an already provisioned runtime or `-SkipBuild` if already built.
 
 Start ComfyUI on `127.0.0.1:8189`, then double-click **Start-GimmeMusic.bat**. Open **http://127.0.0.1:8195**. For another ComfyUI port, pass `-EngineUrl http://127.0.0.1:8188` during setup. ComfyUI must run on the same machine because the library uses its input/output folders.
 
@@ -58,7 +58,13 @@ Uses curl, resumes partial downloads, and skips existing files. Downloads can be
 
 **Editing:** use Song Sheet → Next take for documents, or Workflow settings for node controls. Drafts are saved in browser storage and apply to the next submission. Saved releases are immutable; **Use for next take** starts an editable draft using that release's graph. Set a sheet's review behavior to **stop for review** to pause generation for approval. **Validate Song Sheets** runs Plenio's document checks without submitting a render; automatic documents may remain unavailable until their upstream stages execute. Score editing uses native ABC text; graph rewiring and Plenio's visual piano roll remain in ComfyUI. Randomized seed hunting overrides individual seed values while enabled.
 
-**Cover lyrics:** choose Lyrics → Use my own lyrics and paste section-tagged lyrics, or load a track in the editor and edit its lyrics document. Custom lyrics select a sung cover mode and replace the source words at the Song Sheet. Use validation to check their compatibility with the source score.
+**Original cover lyrics:** choose Lyrics → Lyric source → **Provide original lyrics**, then paste the complete words for the exact recording or clip, including repeated choruses. Transcription still runs. Matching words supply timing anchors; unmatched supplied words use interpolated timing marked as uncertain. Plenio places those words into the final score’s sections. This is not acoustic forced alignment. Song Sheet → Run sheets shows the untouched transcript, word error rate, and estimated-word count. Review before rendering when timing matters. The existing Cover Brief mode controls whether the Song Sheet stops.
+
+The backward-compatible extension adds an optional input to Transcribe Lyrics without rewiring graphs. Setup installs it automatically. Existing installations can run `python scripts/install_lyrics.py <Plenio-root>` using the studio Python, then restart ComfyUI. Supplied lyrics are stored in local drafts and run prompts, like other song inputs.
+
+**Cover Brief:** Sound exposes title, template, description, genre, mood and harmony; Lyrics exposes vocals and all mode-dependent fields; Controls exposes workflow mode. Template text, choices and reset actions use Plenio’s own template rules.
+
+**Replacement cover lyrics:** choose Lyrics → Use my own lyrics and paste section-tagged lyrics, or load a track in the editor and edit its lyrics document. Custom lyrics select a sung cover mode and replace the source words at the Song Sheet. Use validation to check their compatibility with the source score.
 
 **Projects:** create a project from Projects, then choose it in the Generation project selector. New takes export under `plenio/gimmemusic-projects/<project-id>` and appear together, including approval continuations. Use a track's three-dot menu to assign existing releases without moving their audio. **Save draft** stores the current draft in the project; **Load saved draft** restores it. Saving drafts is explicit. Projects and assignments live in ignored `data/projects.json`, so they survive restarts and are not published to GitHub.
 

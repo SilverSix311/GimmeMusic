@@ -89,7 +89,10 @@ def default_form(profile):
             entry = json.loads(n['inputs'].get('sheet_state') or '{}').get('docs', {}).get('title', {})
             if entry.get('state') == 'manual':
                 title = entry.get('text', '')
-    return {'title': title, 'fields': {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, 'lyrics': lyrics,
+    original_lyrics = next((n['inputs'].get('original_lyrics', '') for n in prompt.values() if n['class_type'] == 'PlenioTranscribeLyrics' and 'expected_lyrics' not in n['inputs']), '')
+    if original_lyrics:
+        lyrics_mode = 'original'
+    return {'originalLyrics': original_lyrics, 'title': title, 'fields': {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, 'lyrics': lyrics,
             'lyricsMode': lyrics_mode, 'source': source, 'seed': seeds[-1] if seeds else 0}
 
 
@@ -106,6 +109,18 @@ def build_prompt(profile, params, schema=None):
     prompt = copy.deepcopy(profile['prompt'])
     apply_node_inputs(prompt, params.get('nodeInputs', {}), schema or {})
     _, node = brief_node(prompt)
+    original_mode = params.get('lyricsMode') == 'original'
+    if original_mode:
+        if not node or node['class_type'] != 'PlenioCoverBrief':
+            raise ValueError('Original source lyrics require a cover workflow.')
+        if not str(params.get('originalLyrics', '')).strip():
+            raise ValueError('Paste the original lyrics, or choose automatic transcription.')
+        params = copy.deepcopy(params)
+        params['lyricsIntent'] = None
+        params.setdefault('fields', {})['vocals'] = 'original lyrics'
+        spec = (schema or {}).get('PlenioTranscribeLyrics', {}).get('input', {})
+        if 'original_lyrics' not in {**spec.get('optional', {}), **spec.get('required', {})}:
+            raise ValueError('Install the GimmeMusic original-lyrics extension and restart ComfyUI before using provided original lyrics.')
     manual_lyrics = params.get('lyricsMode') == 'manual' or params.get('lyricsIntent') == 'custom'
     if params.get('lyricsMode') == 'manual' and not str(params.get('lyrics', '')).strip():
         raise ValueError('Paste lyrics, or choose automatic lyrics.')
@@ -130,6 +145,11 @@ def build_prompt(profile, params, schema=None):
                 node['inputs'][name] = value
     for node_id, n in prompt.items():
         inputs = n['inputs']
+        if n['class_type'] == 'PlenioTranscribeLyrics' and 'expected_lyrics' not in inputs:
+            if original_mode:
+                inputs['original_lyrics'] = str(params['originalLyrics'])
+            elif params.get('lyricsMode') in ('manual', 'auto', 'original'):
+                inputs.pop('original_lyrics', None)
         if n['class_type'] == 'LoadAudio' and params.get('source'):
             source = str(params['source'])
             if not contained(COMFY / 'input', source).is_file():
@@ -143,7 +163,7 @@ def build_prompt(profile, params, schema=None):
             if mode == 'manual':
                 state['docs']['lyrics'] = {'state': 'manual', 'text': str(params.get('lyrics', ''))}
                 state.pop('review', None)
-            elif mode == 'auto':
+            elif mode in ('auto', 'original'):
                 state['docs'].pop('lyrics', None)
                 state.pop('review', None)
             inputs['sheet_state'] = json.dumps(state)
@@ -155,7 +175,7 @@ def build_prompt(profile, params, schema=None):
         elif params.get('seed') is not None and n['class_type'] == 'SeedNode' and 'seed' not in params.get('nodeInputs', {}).get(node_id, {}):
             inputs['seed'] = int(params['seed'])
     sheet_edits = copy.deepcopy(params.get('sheetEdits', {}))
-    if params.get('lyricsMode') in ('manual', 'auto'):
+    if params.get('lyricsMode') in ('manual', 'auto', 'original'):
         for node_id, n in prompt.items():
             if n['class_type'] == 'PlenioSongSheet' and 'lyrics' in n['inputs']:
                 sheet_edits.setdefault(node_id, {})['lyrics'] = ({'state': 'manual', 'text': params['lyrics']}
@@ -289,6 +309,14 @@ async def profiles(request):
     return web.json_response([{'id': p['id'], 'name': p['name'], 'kind': p['kind'], 'hash': p['hash'], 'defaults': default_form(p), 'options': options(p), 'vocalOptions': vocal_options(p)} for p in studio.profiles.values()])
 
 
+async def brief_fields(request):
+    data = await request.json()
+    fields = data.get('fields', {})
+    mapped = {k.removeprefix('vocals.'): v for k, v in fields.items() if isinstance(v, str)}
+    return web.json_response(await studio.engine('/plenio/brief/fields',
+        {'kind': data.get('kind', 'cover'), 'template': fields.get('template', 'none'), 'fields': mapped}))
+
+
 async def status(request):
     try:
         stats, queue = await asyncio.gather(studio.engine('/system_stats'), studio.engine('/queue'))
@@ -397,11 +425,19 @@ async def jobs(request):
         if record:
             job['status'] = record['status']['status_str']
             job['sheets'] = []
+            checks = {c['draft_sha256']: c for c in job.get('lyricChecks', [])}
             for node, out in record.get('outputs', {}).items():
+                checks.update({note['draft_sha256']: dict(note, node=node) for note in out.get('plenio_asr', []) if note.get('original_lyrics')})
                 for sheet in out.get('plenio_sheet', []):
                     job['sheets'].append(dict(sheet, node=node))
                     if sheet.get('waiting'):
                         review.append(dict(sheet, node=node))
+            if not checks and any(n.get('inputs', {}).get('original_lyrics') for n in job.get('prompt', {}).values()):
+                for sheet in job['sheets']:
+                    note = await lyric_note(sheet.get('docs', {}).get('lyrics', {}).get('text', ''))
+                    if note and note.get('original_lyrics'):
+                        checks[note['draft_sha256']] = dict(note, node=sheet['node'])
+            job['lyricChecks'] = list(checks.values())
             messages = [m[1] for m in record['status'].get('messages', []) if m[0] == 'execution_error']
             job['error'] = messages[-1].get('exception_message') if messages else None
             if review:
@@ -519,6 +555,17 @@ def editor_profile(profile_id, track_id=None):
     return {**profile, 'prompt': prompt}, record
 
 
+async def lyric_note(text):
+    if not text:
+        return None
+    normalized = '\n'.join(line.rstrip() for line in text.replace('\r\n', '\n').replace('\r', '\n').split('\n')).strip('\n')
+    digest = hashlib.sha256(normalized.encode()).hexdigest()
+    try:
+        return (await studio.engine('/plenio/asr/notes/' + digest)).get('note')
+    except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+        return None
+
+
 async def workbench(request):
     profile, record = editor_profile(request.query['profile'], request.query.get('track'))
     try:
@@ -529,7 +576,8 @@ async def workbench(request):
     for node_id, node in profile['prompt'].items():
         nodes.append({'id': node_id, 'type': node['class_type'], 'title': node.get('_meta', {}).get('title') or node['class_type'],
                       'inputs': node['inputs'], 'schema': studio.schema.get(node['class_type'], {}).get('input', {})})
-    return web.json_response({'nodes': nodes, 'defaults': default_form(profile), 'documents': record.get('documents', {}),
+    note = await lyric_note(record.get('documents', {}).get('lyrics', {}).get('text', ''))
+    return web.json_response({'lyricCheck': note.get('original_lyrics') if note else None, 'nodes': nodes, 'defaults': default_form(profile), 'documents': record.get('documents', {}),
                               'reports': record.get('reports', []), 'title': record.get('title', ''), 'schemaAvailable': bool(studio.schema)})
 
 
@@ -604,7 +652,7 @@ def create_app():
     app = web.Application(middlewares=[errors], client_max_size=301 * 1024 * 1024)
     app.cleanup_ctx.append(lifecycle)
     app.add_routes([web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
-        web.get('/api/workbench', workbench), web.post('/api/sheets/validate', validate_sheets),
+        web.post('/api/brief/fields', brief_fields), web.get('/api/workbench', workbench), web.post('/api/sheets/validate', validate_sheets),
         web.get('/api/projects', projects_api), web.post('/api/projects', projects_api), web.post('/api/tracks/{id}/project', assign_project),
         web.post('/api/favorites/{id}', favorite), web.get('/api/inputs', inputs), web.post('/api/upload', upload),
         web.post('/api/generate', generate), web.get('/api/jobs', jobs), web.post('/api/jobs/{id}/approve', approve),

@@ -22,10 +22,11 @@ def setup(comfy, engine_url, skip_dependencies=False):
     if target.exists():
         if not (target / 'plenio').is_dir():
             raise ValueError(f'{target} exists but does not look like Plenio; it was left untouched.')
-        print('Using existing Plenio unchanged. Compare its version with workflows/upstream.json if nodes are missing.')
+        print('Using existing Plenio; checking compatibility before installing the original-lyrics extension.')
     else:
         subprocess.run(['git', 'clone', '--no-checkout', upstream['repository'], str(target)], check=True)
         subprocess.run(['git', '-C', str(target), 'checkout', '--detach', upstream['commit']], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'scripts/install_lyrics.py'), str(target)], check=True)
     if not skip_dependencies:
         subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(ROOT / 'requirements.txt'), '-r', str(target / 'requirements.txt'), 'faster-whisper', 'rotary-embedding-torch'], check=True)
         if sys.platform == 'win32':

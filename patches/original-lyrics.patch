@@ -1,0 +1,95 @@
+diff --git a/plenio/comfy/nodes/transcribe_lyrics.py b/plenio/comfy/nodes/transcribe_lyrics.py
+index 55cd501..df49996 100644
+--- a/plenio/comfy/nodes/transcribe_lyrics.py
++++ b/plenio/comfy/nodes/transcribe_lyrics.py
+@@ -13,6 +13,7 @@ from typing import Any
+ from comfy_api.latest import io
+ 
+ from ...core import score as score_rules
++from ...core.original_lyrics import original_words
+ from ...core.alignment import LOW_CONFIDENCE, align, check_sung_lyrics, drop_inventions, join_tokens
+ from ...core.asr import (
+     ENGINES,
+@@ -226,6 +227,8 @@ class PlenioTranscribeLyrics(io.ComfyNode):
+                     advanced=True,
+                     tooltip="auto: GPU, falling back to the CPU (about 0.6 x the audio length) with a warning.",
+                 ),
++                io.String.Input("original_lyrics", optional=True, multiline=True, default="",
++                                tooltip="Original source words: matched to ASR timing and verified against the transcript."),
+             ],
+             outputs=[
+                 io.String.Output(
+@@ -251,6 +254,7 @@ class PlenioTranscribeLyrics(io.ComfyNode):
+         timeline: Any = None,
+         expected_lyrics: str | None = None,
+         brief: Any = None,
++        original_lyrics: str = "",
+     ) -> io.NodeOutput:
+         checking = expected_lyrics is not None
+         language = asr_language(language, brief)
+@@ -326,12 +330,21 @@ class PlenioTranscribeLyrics(io.ComfyNode):
+             data["weak_segments"] = sorted(weak)
+         kept, _dropped = drop_inventions(words, own_timeline)
+         reliable = sum(1 for w in kept if w.p >= LOW_CONFIDENCE)
+-        if reliable < MIN_RELIABLE_WORDS:
++        if reliable < MIN_RELIABLE_WORDS and not original_lyrics.strip():
+             raise PlenioUserError(
+                 f"No reliable singing was found ({reliable} clear word(s)); the automatic lyrics would be guesswork.",
+                 hint="Set the language explicitly, trim the source to the sung part, or enter the lyrics manually in "
+                 "the Song Sheet.",
+             )
++        reference = None
++        if original_lyrics.strip():
++            words, reference = original_words(original_lyrics, kept)
++            verification = check_sung_lyrics("[verse]\n" + join_tokens([w.word for w in words]), list(result.words)).to_dict()
++            reference["verification"] = verification
++            reference["transcript"] = transcript
++            data["original_lyrics"] = reference
++            warnings.append(f"Provided original lyrics: {reference['matched_words']} ASR-matched words; "
++                            f"{reference['estimated_words']} estimated timings. Review the Song Sheet against the recording.")
+         sections: list[Any] = []
+         meters: list[str] = []
+         prints: tuple[tuple[str, str], ...] = ()
+@@ -342,11 +355,11 @@ class PlenioTranscribeLyrics(io.ComfyNode):
+                 prints = bar_match.bar_prints(canonical.from_abc(score))
+             except canonical.ScoreSyntaxError:
+                 prints = ()
+-        alignment = align(words, sections, timeline=own_timeline, score_meters=meters, score_prints=prints)
++        alignment = align(words, sections, timeline=own_timeline, score_meters=meters, score_prints=prints, supplied_words=bool(original_lyrics.strip()))
+         warnings.extend(alignment.warnings)
+         data["alignment"] = alignment.to_dict()
+         summary = (
+-            f"{len(kept)} words in {len([s for s in alignment.sections if s['words']])} section(s), {detected} "
++            f"{len(words) if reference else len(kept)} words in {len([s for s in alignment.sections if s['words']])} section(s), {detected} "
+             f"({result.language_probability:.0%}), placement: {alignment.method}"
+             + (", from the cache" if result.cached else f", {result.seconds:.0f} s on {result.device}")
+         )
+@@ -365,6 +378,7 @@ class PlenioTranscribeLyrics(io.ComfyNode):
+             "draft_sha256": sha256_text(normalize_document(alignment.lyrics)),
+             "engine": result.engine,
+             "language": detected,
++            "original_lyrics": reference,
+             "low_confidence": [w.word for w in alignment.low_confidence],
+             "left_out": [w.word for w in result.words if w.segment in weak]
+             + [w.word for w in alignment.dropped],
+diff --git a/plenio/core/alignment.py b/plenio/core/alignment.py
+index 297f99a..15d47d0 100644
+--- a/plenio/core/alignment.py
++++ b/plenio/core/alignment.py
+@@ -239,6 +239,7 @@ def align(
+     timeline: Timeline | None,
+     score_meters: Sequence[str] = (),
+     score_prints: Sequence[bar_match.BarPrint] = (),
++    supplied_words: bool = False,
+ ) -> Alignment:
+     """The automatic lyrics draft: the final score's section tags with the sung words in them.
+ 
+@@ -247,7 +248,7 @@ def align(
+     and the final score is arranged (sections copied, moved, deleted), the words follow their bars.
+     """
+     warnings: list[str] = []
+-    kept, dropped = drop_inventions(words, timeline)
++    kept, dropped = (list(words), []) if supplied_words else drop_inventions(words, timeline)
+     if dropped:
+         warnings.append(
+             f"{len(dropped)} word(s) outside the vocal melody were left out as ASR inventions: "

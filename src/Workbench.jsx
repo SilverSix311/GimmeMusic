@@ -41,7 +41,8 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
   },[activeProfile,baseTrack]);
   useEffect(()=>setValidation([]),[form,source,trackId]);
   const patchNode=(node,key,value)=>{
-    if(['PlenioSongBrief','PlenioCoverBrief'].includes(node.type))setForm(old=>({...old,...(key==='title'?{title:value}:{}),fields:{...old.fields,[key]:value}}));
+    if(['PlenioSongBrief','PlenioCoverBrief'].includes(node.type))setForm(old=>({...old,...(key==='title'?{title:value}:{}),...(key==='vocals'&&value!==old.fields.vocals?{lyricsMode:'auto',lyricsIntent:undefined}:{}),fields:{...old.fields,[key]:value}}));
+    else if(node.type==='PlenioTranscribeLyrics'&&key==='original_lyrics')setForm(old=>({...old,originalLyrics:value,lyricsMode:value.trim()?'original':'auto',lyricsIntent:undefined,fields:{...old.fields,vocals:'original lyrics'},sheetEdits:Object.fromEntries(Object.entries(old.sheetEdits||{}).map(([id,docs])=>[id,Object.fromEntries(Object.entries(docs).filter(([k])=>k!=='lyrics'))]))}));
     else if(node.type==='LoadAudio'&&key==='audio')setForm(old=>({...old,source:value}));
     else setForm(old=>({...old,nodeInputs:{...old.nodeInputs,[node.id]:{...old.nodeInputs?.[node.id],[key]:value}}}));
   };
@@ -49,7 +50,7 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
     if(kind==='title'&&form.title?.trim())return {state:'manual',text:form.title};
     if(form.sheetEdits?.[node.id]?.[kind])return form.sheetEdits[node.id][kind];
     if(kind==='lyrics'&&form.lyricsMode==='manual')return {state:'manual',text:form.lyrics};
-    if(kind==='lyrics'&&form.lyricsMode==='auto')return {state:'auto'};
+    if(kind==='lyrics'&&['auto','original'].includes(form.lyricsMode))return {state:'auto'};
     return readState(node).docs?.[kind]||{state:'auto'};
   };
   const setDoc=(node,kind,entry)=>setForm(old=>({...old,...(kind==='title'?{title:entry.state==='manual'?entry.text:''}:{}),...(kind==='lyrics'?{lyricsMode:'preserve',lyricsIntent:entry.state==='manual'?'custom':undefined,fields:{...old.fields,...(entry.state==='manual'?{vocals:profile.kind==='cover'?'new lyrics':'sung'}:{})}}:{}),sheetEdits:{...old.sheetEdits,[node.id]:{...old.sheetEdits?.[node.id],[kind]:entry}}}));
@@ -60,7 +61,7 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
     for(const node of data.nodes.filter(n=>n.type==='PlenioSongSheet')){
       sheetEdits[node.id]={};for(const kind of kinds)if(kind in node.inputs&&data.documents[kind]?.text!=null)sheetEdits[node.id][kind]={state:'manual',text:data.documents[kind].text};
     }
-    setForm({...data.defaults,baseTrack:trackId,sheetEdits,title:data.title||data.defaults.title,lyricsMode:'preserve',projectId:track?.projectId||form.projectId||null});setSource('draft');notify('Loaded the release’s graph and documents into your next take.');
+    setForm({...data.defaults,baseTrack:trackId,sheetEdits,title:data.title||data.defaults.title,lyricsMode:data.defaults.lyricsMode==='original'?'original':'preserve',projectId:track?.projectId||form.projectId||null});setSource('draft');notify('Loaded the release’s graph and documents into your next take.');
   };
   const validate=async()=>{
     setChecking(true);try{const r=await fetch('/api/sheets/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,profile:profile.id})});const d=await r.json();if(!r.ok)throw Error(d.error);setValidation(d)}catch(e){notify(e.message,'error')}finally{setChecking(false)}
@@ -79,6 +80,7 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
     {source==='release'&&data&&trackId&&<div className="bench-actions"><span>Saved release · original documents and settings</span><button className="small-primary" onClick={useRelease}>Use for next take <ArrowRight size={15}/></button></div>}
     {error&&<p className="job-error">{error}</p>}
     {source==='run'?<>
+      {run?.lyricChecks?.map(check=><article className="bench-card" key={check.node}><h2>Original lyrics · transcription comparison</h2><p>{check.original_lyrics.matched_words} matched words · {check.original_lyrics.estimated_words} estimated timings</p><p className="review-finding">Timing follows ASR word matches; unmatched words are interpolated. This is not acoustic forced alignment.</p><p>Transcription word error rate: {check.original_lyrics.verification?.wer==null?'Unavailable':Math.round(check.original_lyrics.verification.wer*100)+'%'}</p><label className="field"><span className="field-label">WHAT THE TRANSCRIPTION HEARD</span><textarea readOnly rows={8} value={check.original_lyrics.transcript}/></label>{check.original_lyrics.verification?.findings?.map((f,i)=><p key={i} className="review-finding">{f}</p>)}</article>)}
       {run?.status==='review'&&<button className="small-primary" onClick={()=>onReview(run)}>Review & approve this run</button>}
       {(run?.sheets||run?.review||[]).map(s=><article className="bench-card" key={s.node}><h2>Song Sheet · {s.node}</h2><p>{s.status}</p>{Object.entries(s.docs||{}).map(([kind,doc])=><label className="field" key={kind}><span className="field-label">{label(kind)} · {doc.state}</span><textarea readOnly rows={kind==='title'?2:10} value={doc.text||''}/></label>)}{s.findings?.map((f,i)=><p className="review-finding" key={i}>{f.severity}: {f.message}</p>)}</article>)}
       {!(run?.sheets?.length||run?.review?.length)&&<p className="bench-note">Choose a run with Song Sheet output. Sheets appear after that stage completes.</p>}
@@ -100,6 +102,7 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
         {data.nodes.map(node=>{
           let values={...node.inputs,...(!readonly?form.nodeInputs?.[node.id]:{})};
           if(!readonly&&['PlenioSongBrief','PlenioCoverBrief'].includes(node.type))values={...values,...form.fields,...('title' in values?{title:form.title??values.title}:{})};
+          if(!readonly&&node.type==='PlenioTranscribeLyrics'&&!('expected_lyrics' in node.inputs))values.original_lyrics=form.lyricsMode==='original'?form.originalLyrics||'':form.lyricsMode==='preserve'?node.inputs.original_lyrics||'':'';
           if(!readonly&&node.type==='LoadAudio')values.audio=form.source;
           const definitions=specs(node.schema,values);
           const fields=Object.entries(definitions).filter(([key,[type,c={} ]])=>key!=='sheet_state'&&!Array.isArray(values[key])&&(!c.forceInput||key in values)&&(Array.isArray(type)||['STRING','BOOLEAN','INT','FLOAT','COMBO','COMFY_DYNAMICCOMBO_V3'].includes(type)||['string','boolean','number'].includes(typeof values[key])));
@@ -107,6 +110,7 @@ export default function Workbench({projectControls,view,profile,profiles,form,se
           return <details className="bench-card node-settings" key={node.id} open={search?true:undefined}><summary><span>{node.title}</span><small>{node.type} · {node.id} · {fields.length} settings</small></summary><div className="node-fields">{fields.map(([key,spec])=><label className="field" key={key}><span className="field-label">{label(key)}</span><Widget name={node.id+' / '+key} value={values[key]} spec={spec} disabled={readonly||!data.schemaAvailable} onChange={v=>patchNode(node,key,v)}/>{spec[1]?.tooltip&&<small>{spec[1].tooltip}</small>}</label>)}</div><details className="connections"><summary>Connections (read-only)</summary>{Object.entries(node.inputs).filter(([,v])=>Array.isArray(v)).map(([k,v])=><p key={k}>{label(k)} ← Node {v[0]}, output {v[1]}</p>)}</details></details>;
         })}
       </>}
+      {source==='release'&&data.lyricCheck&&<article className="bench-card"><h2>Original lyrics · source check</h2><p>{data.lyricCheck.matched_words} matched words · {data.lyricCheck.estimated_words} estimated timings</p><p>Transcription word error rate: {data.lyricCheck.verification?.wer==null?'Unavailable':Math.round(data.lyricCheck.verification.wer*100)+'%'}</p><label className="field"><span className="field-label">WHAT THE TRANSCRIPTION HEARD</span><textarea readOnly rows={8} value={data.lyricCheck.transcript}/></label></article>}
       {source==='release'&&data.reports?.length>0&&<details className="bench-card"><summary>Saved validation and processing reports</summary>{data.reports.map((r,i)=><div key={i}><h3>{r.summary||r.kind}</h3>{r.messages?.map((m,j)=><p className="review-finding" key={j}>{m}</p>)}</div>)}</details>}
       {validation.map(s=><article className="bench-card" key={s.node}><h2>Validation · Sheet {s.node}</h2><p>{s.status}</p>{s.findings?.map((f,i)=><p className="review-finding" key={i}>{f.severity}: {f.message}</p>)}<small>Automatic documents may be unavailable until their upstream steps run. This does not queue or approve a render.</small></article>)}
     </>}

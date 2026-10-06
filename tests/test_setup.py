@@ -30,7 +30,8 @@ class SetupTests(unittest.TestCase):
             with patch.object(setup_module, 'ROOT', root), patch.object(setup_module.sys, 'executable', str(python)), patch.object(setup_module.subprocess, 'run') as run:
                 setup_module.setup(comfy, 'http://127.0.0.1:8189', True)
                 setup_module.setup(comfy, 'http://127.0.0.1:8189', True)
-                run.assert_not_called()
+                self.assertEqual(run.call_count, 2)
+                self.assertIn("install_lyrics.py", run.call_args.args[0][1])
             self.assertEqual(json.loads((dest / 'example.json').read_text()), {'user': True})
             self.assertEqual(len(pth.read_text().splitlines()), 3)
             self.assertEqual(json.loads((root / 'config.json').read_text())['comfy_root'], str(comfy))
