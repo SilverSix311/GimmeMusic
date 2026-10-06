@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+*.log
+__pycache__/
+config.json
+.venv/
+.env
+.env.*
+!.env.example
+*.pyc
+tests/*.png
+test-results/
+playwright-report/
+runtime/
+*.part

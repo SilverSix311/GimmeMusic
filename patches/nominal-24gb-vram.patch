@@ -1,0 +1,17 @@
+diff --git a/plenio/comfy/nodes/transcribe_score.py b/plenio/comfy/nodes/transcribe_score.py
+index 97c6841..333549c 100644
+--- a/plenio/comfy/nodes/transcribe_score.py
++++ b/plenio/comfy/nodes/transcribe_score.py
+@@ -17,9 +17,10 @@ from ...core.timefmt import clock as _clock
+ from .. import host
+ from ..types import ReportType, TimelineType
+ 
+-LONG_SOURCE_VRAM_BYTES = 24 * 2**30
++LONG_SOURCE_VRAM_BYTES = int(23.5 * 2**30)
+ """Sources longer than one native SheetSage2 window (300 s) need a second window; on the owner's
+-16 GB card that ran out of memory (Phase 4A E3). Larger cards are allowed to try."""
++16 GB card that ran out of memory (Phase 4A E3). Nominal 24 GB cards are allowed to try;
++the driver can report slightly less than the advertised capacity."""
+ 
+ 
+ def _bar_prints(abc: str) -> tuple[tuple[str, str], ...]:

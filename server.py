@@ -1,0 +1,449 @@
+"""GimmeMusic: a local studio for unchanged ComfyUI API graphs."""
+import asyncio
+import copy
+import hashlib
+import json
+import mimetypes
+import os
+import secrets
+import time
+import uuid
+from pathlib import Path
+from urllib.parse import quote
+
+import aiohttp
+from aiohttp import web
+
+ROOT = Path(__file__).resolve().parent
+CONFIG = json.loads((ROOT / 'config.json').read_text(encoding='utf-8-sig')) if (ROOT / 'config.json').is_file() else {}
+COMFY = Path(os.environ.get('GIMMEMUSIC_COMFY_ROOT') or CONFIG.get('comfy_root') or ROOT.parent / 'Plenio-Portable/ComfyUI_windows_portable/ComfyUI').resolve()
+OUTPUT = COMFY / 'output'
+DATA = ROOT / 'data'
+ENGINE = (os.environ.get('GIMMEMUSIC_ENGINE_URL') or CONFIG.get('engine_url') or 'http://127.0.0.1:8189').rstrip('/')
+DATA.mkdir(exist_ok=True)
+PROFILES = DATA / 'profiles.json'
+JOBS_FILE = DATA / 'jobs.json'
+FAVORITES = DATA / 'favorites.json'
+
+
+def read_json(path, default=None):
+    try:
+        return json.loads(path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, value):
+    temp = path.with_suffix('.tmp')
+    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
+    temp.replace(path)
+
+
+def contained(base, relative):
+    path = (base / relative).resolve()
+    if not path.is_relative_to(base.resolve()):
+        raise web.HTTPForbidden(text='Path is outside the library.')
+    return path
+
+
+def brief_node(prompt):
+    return next(((k, n) for k, n in prompt.items() if n.get('class_type') in ('PlenioSongBrief', 'PlenioCoverBrief')), (None, None))
+
+
+def default_form(profile):
+    prompt = profile['prompt']
+    _, node = brief_node(prompt)
+    fields = copy.deepcopy(node['inputs']) if node else {}
+    lyrics = ''
+    lyrics_mode = 'preserve'
+    for n in prompt.values():
+        if n['class_type'] == 'PlenioSongSheet':
+            state = json.loads(n['inputs'].get('sheet_state') or '{}')
+            entry = state.get('docs', {}).get('lyrics', {})
+            if entry.get('state') == 'manual':
+                lyrics, lyrics_mode = entry.get('text', ''), 'manual'
+    source = next((n['inputs'].get('audio', '') for n in prompt.values() if n['class_type'] == 'LoadAudio'), '')
+    seeds = [n['inputs'].get('seed', 0) for n in prompt.values() if n['class_type'] == 'SeedNode']
+    return {'fields': {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, 'lyrics': lyrics,
+            'lyricsMode': lyrics_mode, 'source': source, 'seed': seeds[-1] if seeds else 0}
+
+
+def build_prompt(profile, params):
+    """Only scalar run inputs change; every class and connection stays intact."""
+    prompt = copy.deepcopy(profile['prompt'])
+    _, node = brief_node(prompt)
+    permitted = {'description', 'genre', 'mood', 'tempo', 'length', 'mode', 'title', 'vocals',
+                 'vocals.language', 'vocals.voice', 'vocals.theme', 'harmony', 'key', 'meter'}
+    if node:
+        for key, value in params.get('fields', {}).items():
+            if key in permitted and key in node['inputs'] and isinstance(value, str):
+                node['inputs'][key] = value
+    for n in prompt.values():
+        inputs = n['inputs']
+        if n['class_type'] == 'LoadAudio' and params.get('source'):
+            source = str(params['source'])
+            if not contained(COMFY / 'input', source).is_file():
+                raise ValueError('Choose an existing source recording or upload one.')
+            inputs['audio'] = source
+        if n['class_type'] == 'PlenioSongSheet' and 'lyrics' in inputs and params.get('lyricsMode', 'preserve') != 'preserve':
+            state = json.loads(inputs.get('sheet_state') or '{}')
+            state.setdefault('schema', 'plenio.sheet_state/1')
+            state.setdefault('docs', {})
+            mode = params.get('lyricsMode', 'preserve')
+            if mode == 'manual':
+                state['docs']['lyrics'] = {'state': 'manual', 'text': str(params.get('lyrics', ''))}
+                state.pop('review', None)
+            elif mode == 'auto':
+                state['docs'].pop('lyrics', None)
+                state.pop('review', None)
+            inputs['sheet_state'] = json.dumps(state)
+        if params.get('randomize'):
+            for key in ('seed', 'noise_seed', 'sampling_mode.seed'):
+                if key in inputs and isinstance(inputs[key], int):
+                    inputs[key] = secrets.randbelow(2**48)
+        elif params.get('seed') is not None and n['class_type'] == 'SeedNode':
+            inputs['seed'] = int(params['seed'])
+    return prompt
+
+
+class Studio:
+    def __init__(self):
+        self.profiles = read_json(PROFILES, {})
+        self.jobs = read_json(JOBS_FILE, {})
+        self.client_id = 'gimmemusic-' + str(uuid.uuid4())
+        self.session = None
+        self.event = {}
+        self.online = False
+        self.catalogue = []
+        self.catalogue_at = 0
+        self.schema = {}
+
+    async def engine(self, path, data=None):
+        async with self.session.request('GET' if data is None else 'POST', ENGINE + path, json=data) as response:
+            payload = await response.json(content_type=None)
+            if response.status >= 400:
+                raise ValueError(json.dumps(payload, ensure_ascii=False))
+            return payload
+
+    async def bootstrap(self):
+        if self.profiles:
+            return
+        # Public defaults are self-contained. Never harvest personal history on first run.
+        self.profiles = read_json(ROOT / 'workflows/profiles.json', {})
+        if self.profiles:
+            write_json(PROFILES, self.profiles)
+
+    def library(self, refresh=False):
+        if not refresh and time.time() - self.catalogue_at < 8:
+            return self.catalogue
+        favorites = read_json(FAVORITES, [])
+        tracks = []
+        for file in OUTPUT.rglob('*.plenio.json'):
+            if 'portable-test' in file.parts:
+                continue
+            record = read_json(file, {})
+            rel = file.relative_to(OUTPUT).as_posix()
+            track_id = hashlib.sha256(rel.encode()).hexdigest()[:20]
+            files = []
+            for entry in record.get('files', []):
+                name = entry.get('name', '')
+                if Path(name).suffix.lower() not in ('.flac', '.mp3', '.wav', '.ogg'):
+                    continue
+                path = (file.parent / name).resolve()
+                if path.is_relative_to(OUTPUT.resolve()) and path.is_file():
+                    files.append({'name': path.name, 'format': path.suffix[1:].upper(), 'url': '/media/' + quote(path.relative_to(OUTPUT).as_posix())})
+            if not files:
+                continue
+            docs = record.get('documents', {})
+            doc = lambda key: docs.get(key, {}).get('text', '')
+            prompt = record.get('prompt', {})
+            _, brief = brief_node(prompt)
+            fields = brief.get('inputs', {}) if brief else {}
+            seeds = [n['inputs'].get('seed') for n in prompt.values() if n.get('class_type') == 'SeedNode']
+            cover = next((file.with_suffix('').with_suffix(ext) for ext in ('.jpg', '.png', '.jpeg') if file.with_suffix('').with_suffix(ext).is_file()), None)
+            tracks.append({'id': track_id, 'title': record.get('title') or file.stem, 'created': record.get('created', ''),
+                           'mtime': file.stat().st_mtime, 'duration': record.get('audio', {}).get('seconds', 0),
+                           'style': doc('style') or fields.get('description', ''), 'lyrics': doc('lyrics'), 'files': files,
+                           'favorite': track_id in favorites, 'seed': seeds[-1] if seeds else None,
+                           'genre': fields.get('genre') or 'YuE2', 'kind': 'Cover' if brief and brief['class_type'] == 'PlenioCoverBrief' else 'Song',
+                           'art': '/media/' + quote(cover.relative_to(OUTPUT).as_posix()) if cover else None,
+                           'record': '/media/' + quote(rel), 'licenses': record.get('licences', []),
+                           'sampleRate': record.get('audio', {}).get('sample_rate'), 'recordPath': rel})
+        self.catalogue = sorted(tracks, key=lambda t: t['mtime'], reverse=True)
+        self.catalogue_at = time.time()
+        return self.catalogue
+
+    async def submit(self, prompt, profile, parent=None):
+        result = await self.engine('/prompt', {'prompt': prompt, 'client_id': self.client_id})
+        pid = result['prompt_id']
+        self.jobs[pid] = {'id': pid, 'profile': profile, 'created': time.time(), 'status': 'queued', 'prompt': prompt, 'parent': parent}
+        write_json(JOBS_FILE, self.jobs)
+        return pid
+
+    async def watch(self):
+        while True:
+            try:
+                async with self.session.ws_connect(ENGINE.replace('http:', 'ws:') + '/ws?clientId=' + self.client_id, heartbeat=25) as ws:
+                    async for message in ws:
+                        if message.type == aiohttp.WSMsgType.TEXT:
+                            event = json.loads(message.data)
+                            if event['type'] in ('executing', 'progress', 'execution_start'):
+                                self.event = event
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                await asyncio.sleep(3)
+
+
+studio = Studio()
+
+
+@web.middleware
+async def errors(request, handler):
+    if request.method not in ('GET', 'HEAD'):
+        origin = request.headers.get('Origin')
+        if origin and origin not in ('http://127.0.0.1:8195', 'http://localhost:8195'):
+            raise web.HTTPForbidden(text='Only the local studio may make changes.')
+    try:
+        return await handler(request)
+    except (ValueError, KeyError) as error:
+        return web.json_response({'error': str(error)}, status=400)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        return web.json_response({'error': 'ComfyUI is unavailable. Start Plenio, then try again.'}, status=503)
+
+
+async def profiles(request):
+    await studio.bootstrap()
+    if not studio.schema:
+        try:
+            studio.schema = await studio.engine('/object_info')
+        except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+            pass
+    def options(profile):
+        _, node = brief_node(profile['prompt'])
+        required = studio.schema.get(node['class_type'], {}).get('input', {}).get('required', {})
+        return {key: (value[0] if isinstance(value[0], list) else value[1].get('options', [])) for key, value in required.items() if len(value) > 1 or isinstance(value[0], list)}
+    return web.json_response([{'id': p['id'], 'name': p['name'], 'kind': p['kind'], 'hash': p['hash'], 'defaults': default_form(p), 'options': options(p)} for p in studio.profiles.values()])
+
+
+async def status(request):
+    try:
+        stats, queue = await asyncio.gather(studio.engine('/system_stats'), studio.engine('/queue'))
+        return web.json_response({'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': True, 'stats': stats, 'running': len(queue['queue_running']), 'pending': len(queue['queue_pending']), 'event': studio.event})
+    except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+        return web.json_response({'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': False, 'running': 0, 'pending': 0})
+
+
+async def library(request):
+    return web.json_response(await asyncio.to_thread(studio.library, request.query.get('refresh') == '1'))
+
+
+async def favorite(request):
+    data = await request.json()
+    ids = set(read_json(FAVORITES, []))
+    if data.get('favorite'):
+        ids.add(request.match_info['id'])
+    else:
+        ids.discard(request.match_info['id'])
+    write_json(FAVORITES, sorted(ids))
+    studio.catalogue_at = 0
+    return web.json_response({'ok': True})
+
+
+async def media(request):
+    path = contained(OUTPUT, request.match_info['path'])
+    if path.suffix.lower() not in ('.mp3', '.flac', '.wav', '.ogg', '.jpg', '.png', '.jpeg', '.json') or not path.is_file():
+        raise web.HTTPNotFound()
+    response = web.FileResponse(path)
+    if request.query.get('download') == '1':
+        response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''" + quote(path.name)
+    return response
+
+
+async def inputs(request):
+    return web.json_response(sorted(p.relative_to(COMFY / 'input').as_posix() for p in (COMFY / 'input').rglob('*') if p.suffix.lower() in ('.mp3', '.flac', '.wav', '.ogg', '.m4a') and p.is_file()))
+
+
+async def upload(request):
+    reader = await request.multipart()
+    part = await reader.next()
+    if not part or not part.filename:
+        raise ValueError('Choose an audio file.')
+    suffix = Path(part.filename).suffix.lower()
+    if suffix not in ('.mp3', '.flac', '.wav', '.ogg', '.m4a'):
+        raise ValueError('Choose WAV, FLAC, MP3, OGG, or M4A audio.')
+    name = 'GimmeMusic-' + uuid.uuid4().hex[:10] + suffix
+    dest = COMFY / 'input' / name
+    size = 0
+    try:
+        with dest.open('wb') as handle:
+            while chunk := await part.read_chunk(1024 * 1024):
+                size += len(chunk)
+                if size > 300 * 1024 * 1024:
+                    raise ValueError('Audio uploads are limited to 300 MB.')
+                handle.write(chunk)
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
+    return web.json_response({'name': name})
+
+
+async def generate(request):
+    data = await request.json()
+    profile = studio.profiles[data['profile']]
+    count = int(data.get('count', 1))
+    if not 1 <= count <= 8:
+        raise ValueError('Choose between 1 and 8 takes.')
+    ids = []
+    for _ in range(count):
+        try:
+            ids.append(await studio.submit(build_prompt(profile, data), profile['id']))
+        except (ValueError, aiohttp.ClientError, asyncio.TimeoutError) as error:
+            message = (f'{len(ids)} take(s) were queued before submission stopped. ' if ids else '') + str(error)
+            return web.json_response({'ids': ids, 'error': message}, status=400)
+    return web.json_response({'ids': ids})
+
+
+async def jobs(request):
+    try:
+        history, queue = await asyncio.gather(studio.engine('/history'), studio.engine('/queue'))
+    except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+        return web.json_response([dict(id=j['id'], status='offline', created=j['created'], profile=j['profile']) for j in list(studio.jobs.values())[-25:]])
+    running = {row[1] for row in queue['queue_running']}
+    pending = {row[1] for row in queue['queue_pending']}
+    result = []
+    for pid, job in list(studio.jobs.items())[-30:]:
+        if job['status'] in ('continued', 'cancelled'):
+            result.append({k: v for k, v in job.items() if k != 'prompt'})
+            continue
+        record = history.get(pid)
+        review = []
+        if record:
+            job['status'] = record['status']['status_str']
+            for node, out in record.get('outputs', {}).items():
+                for sheet in out.get('plenio_sheet', []):
+                    if sheet.get('waiting'):
+                        review.append(dict(sheet, node=node))
+            messages = [m[1] for m in record['status'].get('messages', []) if m[0] == 'execution_error']
+            job['error'] = messages[-1].get('exception_message') if messages else None
+            if review:
+                job['status'] = 'review'
+                job['review'] = review
+        elif pid in running:
+            job['status'] = 'running'
+        elif pid in pending:
+            job['status'] = 'queued'
+        elif job['status'] in ('running', 'queued'):
+            job['status'] = 'unknown'
+        result.append({k: v for k, v in job.items() if k != 'prompt'})
+    write_json(JOBS_FILE, studio.jobs)
+    return web.json_response(list(reversed(result)))
+
+
+async def approve(request):
+    job = studio.jobs[request.match_info['id']]
+    if job['status'] != 'review':
+        raise ValueError('This run is not waiting for review.')
+    data = await request.json()
+    prompt = copy.deepcopy(job['prompt'])
+    for sheet in job['review']:
+        node = prompt[sheet['node']]
+        state = json.loads(node['inputs'].get('sheet_state') or '{}')
+        state.setdefault('schema', 'plenio.sheet_state/1')
+        state.setdefault('docs', {})
+        for kind, text in data.get('edits', {}).get(sheet['node'], {}).items():
+            if kind not in sheet['owned'] or not isinstance(text, str):
+                raise ValueError('Invalid Song Sheet document.')
+            if text != sheet['docs'][kind]['text']:
+                state['docs'][kind] = {'state': 'manual', 'text': text}
+        checked = await studio.engine('/plenio/sheet/resolve', {'sheet_state': json.dumps(state), 'upstream': {k: v['upstream'] for k, v in sheet['docs'].items()},
+            'owned': sheet['owned'], 'context': sheet.get('context', {}), 'review': sheet['review'], 'brief_mode': 'careful',
+            'engine': sheet.get('engine'), 'instrumental': sheet.get('instrumental', False), 'target_seconds': sheet.get('target_seconds')})
+        errors = [f['message'] for f in checked.get('findings', []) if f.get('severity') == 'error']
+        if errors:
+            raise ValueError('\n'.join(errors))
+        state['review'] = {'approved_fingerprint': checked['fingerprint']}
+        node['inputs']['sheet_state'] = json.dumps(state)
+    pid = await studio.submit(prompt, job['profile'], job['id'])
+    job['status'] = 'continued'
+    job['review'] = []
+    write_json(JOBS_FILE, studio.jobs)
+    return web.json_response({'id': pid})
+
+
+async def cancel(request):
+    pid = request.match_info['id']
+    job = studio.jobs[pid]
+    queue = await studio.engine('/queue')
+    if pid in {row[1] for row in queue['queue_running']}:
+        await studio.engine('/interrupt', {})
+    elif pid in {row[1] for row in queue['queue_pending']}:
+        await studio.engine('/queue', {'delete': [pid]})
+    else:
+        raise ValueError('This run is no longer queued or running.')
+    job['status'] = 'cancelled'
+    write_json(JOBS_FILE, studio.jobs)
+    return web.json_response({'ok': True})
+
+
+def make_waveform(path):
+    import av
+    import numpy as np
+    pieces = []
+    with av.open(str(path)) as audio:
+        resampler = av.AudioResampler(format='flt', layout='mono', rate=1000)
+        for decoded in audio.decode(audio=0):
+            pieces.extend(frame.to_ndarray().ravel() for frame in resampler.resample(decoded))
+        pieces.extend(frame.to_ndarray().ravel() for frame in resampler.resample(None))
+    if not pieces:
+        return []
+    samples = np.abs(np.concatenate(pieces))
+    peaks = np.array([float(np.max(chunk)) if len(chunk) else 0 for chunk in np.array_split(samples, 180)])
+    return (peaks / max(float(peaks.max()), 1e-8)).round(3).tolist()
+
+
+async def waveform(request):
+    track = next((t for t in studio.library() if t['id'] == request.match_info['id']), None)
+    if not track:
+        raise web.HTTPNotFound()
+    cache = DATA / ('wave-' + track['id'] + '.json')
+    peaks = read_json(cache)
+    if peaks is None:
+        from urllib.parse import unquote
+        path = contained(OUTPUT, unquote(track['files'][0]['url'].removeprefix('/media/')))
+        peaks = await asyncio.to_thread(make_waveform, path)
+        write_json(cache, peaks)
+    return web.json_response(peaks)
+
+
+async def static(request):
+    name = request.match_info.get('path') or 'index.html'
+    if name.startswith('api/'):
+        raise web.HTTPNotFound()
+    path = contained(ROOT / 'dist', name)
+    if not path.is_file():
+        path = ROOT / 'dist/index.html'
+    return web.FileResponse(path)
+
+
+async def lifecycle(app):
+    studio.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+    await studio.bootstrap()
+    watcher = asyncio.create_task(studio.watch())
+    yield
+    watcher.cancel()
+    await asyncio.gather(watcher, return_exceptions=True)
+    await studio.session.close()
+
+
+def create_app():
+    app = web.Application(middlewares=[errors], client_max_size=301 * 1024 * 1024)
+    app.cleanup_ctx.append(lifecycle)
+    app.add_routes([web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
+        web.post('/api/favorites/{id}', favorite), web.get('/api/inputs', inputs), web.post('/api/upload', upload),
+        web.post('/api/generate', generate), web.get('/api/jobs', jobs), web.post('/api/jobs/{id}/approve', approve),
+        web.post('/api/jobs/{id}/cancel', cancel), web.get('/api/waveform/{id}', waveform), web.get('/media/{path:.+}', media),
+        web.get('/{path:.*}', static)])
+    return app
+
+
+if __name__ == '__main__':
+    web.run_app(create_app(), host='127.0.0.1', port=8195, print=lambda s: print('GimmeMusic · ' + s, flush=True))

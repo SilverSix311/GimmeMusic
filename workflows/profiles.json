@@ -1,0 +1,1299 @@
+{
+  "cover": {
+    "id": "cover",
+    "name": "YuE2 · Cover",
+    "kind": "cover",
+    "prompt": {
+      "2": {
+        "inputs": {
+          "audio": ""
+        },
+        "class_type": "LoadAudio",
+        "_meta": {
+          "title": "Source recording"
+        }
+      },
+      "4": {
+        "inputs": {
+          "mode": "new cover every run",
+          "template": "metal/nu-metal-vocal",
+          "description": "Heavy guitars, expressive drums, and a powerful chorus.",
+          "genre": "",
+          "mood": "",
+          "vocals": "original lyrics",
+          "vocals.language": "English",
+          "vocals.voice": "",
+          "harmony": "keep original chords",
+          "title": ""
+        },
+        "class_type": "PlenioCoverBrief",
+        "_meta": {
+          "title": "Cover Brief"
+        }
+      },
+      "6": {
+        "inputs": {
+          "lora_name": "ar_lora_inst_v3abc_comfyui.safetensors",
+          "strength_model": 0.0,
+          "strength_clip": 1.0,
+          "model": [
+            "5:101",
+            0
+          ],
+          "clip": [
+            "5:101",
+            1
+          ]
+        },
+        "class_type": "LoraLoader",
+        "_meta": {
+          "title": "Instrumental adapter"
+        }
+      },
+      "7": {
+        "inputs": {
+          "switch": [
+            "4",
+            3
+          ],
+          "on_false": [
+            "5:101",
+            1
+          ],
+          "on_true": [
+            "6",
+            1
+          ]
+        },
+        "class_type": "ComfySwitchNode",
+        "_meta": {
+          "title": "Adapter for instrumental covers"
+        }
+      },
+      "9": {
+        "inputs": {
+          "operation": "prepare from brief",
+          "score": [
+            "8:602",
+            0
+          ],
+          "brief": [
+            "4",
+            0
+          ]
+        },
+        "class_type": "PlenioScoreTools",
+        "_meta": {
+          "title": "Score Tools"
+        }
+      },
+      "10": {
+        "inputs": {
+          "review": "continue",
+          "sheet_state": "{\"schema\": \"plenio.sheet_state/1\", \"docs\": {}}",
+          "score": [
+            "9",
+            0
+          ],
+          "timeline": [
+            "8:602",
+            1
+          ],
+          "reference_audio": [
+            "2",
+            0
+          ],
+          "sung_pitch": [
+            "30",
+            0
+          ],
+          "brief": [
+            "4",
+            0
+          ],
+          "engine": [
+            "5:103",
+            0
+          ]
+        },
+        "class_type": "PlenioSongSheet",
+        "_meta": {
+          "title": "Song Sheet · Score"
+        }
+      },
+      "11": {
+        "inputs": {
+          "engine": "faster-whisper large-v3",
+          "language": "auto",
+          "device": "auto",
+          "audio": [
+            "2",
+            0
+          ],
+          "score": [
+            "10",
+            3
+          ],
+          "brief": [
+            "4",
+            0
+          ]
+        },
+        "class_type": "PlenioTranscribeLyrics",
+        "_meta": {
+          "title": "Transcribe Lyrics - full audio (review section tags)"
+        }
+      },
+      "13": {
+        "inputs": {
+          "seed": 0
+        },
+        "class_type": "SeedNode",
+        "_meta": {
+          "title": "Draft seed"
+        }
+      },
+      "14": {
+        "inputs": {
+          "switch": [
+            "4",
+            2
+          ],
+          "on_false": [
+            "12:504",
+            2
+          ],
+          "on_true": [
+            "11",
+            0
+          ]
+        },
+        "class_type": "ComfySwitchNode",
+        "_meta": {
+          "title": "Original or new lyrics"
+        }
+      },
+      "15": {
+        "inputs": {
+          "switch": [
+            "4",
+            3
+          ],
+          "on_false": [
+            "14",
+            0
+          ],
+          "on_true": [
+            "10",
+            8
+          ]
+        },
+        "class_type": "ComfySwitchNode",
+        "_meta": {
+          "title": "Instrumental: section tags"
+        }
+      },
+      "16": {
+        "inputs": {
+          "review": "continue",
+          "sheet_state": "{\"schema\": \"plenio.sheet_state/1\", \"docs\": {}}",
+          "title": [
+            "12:504",
+            0
+          ],
+          "style": [
+            "12:504",
+            1
+          ],
+          "lyrics": [
+            "15",
+            0
+          ],
+          "artwork_prompt": [
+            "12:504",
+            3
+          ],
+          "context_score": [
+            "10",
+            3
+          ],
+          "timeline": [
+            "8:602",
+            1
+          ],
+          "reference_audio": [
+            "2",
+            0
+          ],
+          "sung_pitch": [
+            "30",
+            0
+          ],
+          "brief": [
+            "4",
+            0
+          ],
+          "engine": [
+            "5:103",
+            0
+          ]
+        },
+        "class_type": "PlenioSongSheet",
+        "_meta": {
+          "title": "Song Sheet · Text"
+        }
+      },
+      "17": {
+        "inputs": {
+          "seed": 0
+        },
+        "class_type": "SeedNode",
+        "_meta": {
+          "title": "Take seed"
+        }
+      },
+      "19": {
+        "inputs": {
+          "tolerance_seconds": 0.0,
+          "audio": [
+            "18:908",
+            0
+          ],
+          "audio_encoder": [
+            "8:601",
+            0
+          ],
+          "brief": [
+            "4",
+            0
+          ]
+        },
+        "class_type": "PlenioVocalCheck",
+        "_meta": {
+          "title": "Check Vocals · best take"
+        }
+      },
+      "20": {
+        "inputs": {
+          "audio": [
+            "19",
+            3
+          ]
+        },
+        "class_type": "PreviewAudio",
+        "_meta": {
+          "title": "Preview (all takes)"
+        }
+      },
+      "23": {
+        "inputs": {
+          "kind": "super-resolution",
+          "kind.model": "pytorch_model.bin"
+        },
+        "class_type": "PlenioAudioModelLoader",
+        "_meta": {
+          "title": "Super-resolution model (optional)"
+        }
+      },
+      "24": {
+        "inputs": {
+          "engine": "resample only",
+          "crossover_hz": 0.0,
+          "sr_gain": 1.0,
+          "preset": "custom - the three fields below",
+          "pre_hz": 0.0,
+          "post_hz": 0.0,
+          "seed": 0,
+          "audio": [
+            "19",
+            0
+          ],
+          "model": [
+            "23",
+            0
+          ]
+        },
+        "class_type": "PlenioRefine",
+        "_meta": {
+          "title": "Refine (optional)"
+        }
+      },
+      "26": {
+        "inputs": {
+          "audio": [
+            "25:402",
+            0
+          ]
+        },
+        "class_type": "PreviewAudio",
+        "_meta": {
+          "title": "Preview (mastered)"
+        }
+      },
+      "27": {
+        "inputs": {
+          "folder": "plenio",
+          "naming": "{date} {title}",
+          "collision": "number",
+          "flac": true,
+          "mp3": false,
+          "wav": false,
+          "tags": "title only",
+          "audio": [
+            "25:402",
+            0
+          ],
+          "title": [
+            "16",
+            0
+          ],
+          "original": [
+            "24",
+            0
+          ],
+          "reports.report_0": [
+            "10",
+            7
+          ],
+          "reports.report_1": [
+            "16",
+            7
+          ],
+          "reports.report_8": [
+            "25:401",
+            1
+          ],
+          "reports.report_9": [
+            "25:402",
+            1
+          ],
+          "reports.report_2": [
+            "8:602",
+            2
+          ],
+          "reports.report_3": [
+            "19",
+            2
+          ],
+          "reports.report_7": [
+            "24",
+            1
+          ]
+        },
+        "class_type": "PlenioExportRelease",
+        "_meta": {
+          "title": "Export Release"
+        }
+      },
+      "30": {
+        "inputs": {
+          "separation": "model_bs_roformer_ep_17_sdr_9.6568.ckpt",
+          "audio": [
+            "2",
+            0
+          ]
+        },
+        "class_type": "PlenioSungPitch",
+        "_meta": {
+          "title": "Sung Pitch (for the editor)"
+        }
+      },
+      "5:101": {
+        "inputs": {
+          "ckpt_name": "yue2_3b_int8_convrot.safetensors"
+        },
+        "class_type": "CheckpointLoaderSimple",
+        "_meta": {
+          "title": "Load Checkpoint"
+        }
+      },
+      "5:103": {
+        "inputs": {
+          "clip": [
+            "5:101",
+            1
+          ]
+        },
+        "class_type": "PlenioEngine",
+        "_meta": {
+          "title": "Engine Profile"
+        }
+      },
+      "8:601": {
+        "inputs": {
+          "audio_encoder_name": "sheetsage2_bf16.safetensors"
+        },
+        "class_type": "AudioEncoderLoader",
+        "_meta": {
+          "title": "SheetSage2"
+        }
+      },
+      "8:602": {
+        "inputs": {
+          "audio_encoder": [
+            "8:601",
+            0
+          ],
+          "audio": [
+            "2",
+            0
+          ]
+        },
+        "class_type": "PlenioTranscribeScore",
+        "_meta": {
+          "title": "Transcribe Score"
+        }
+      },
+      "12:501": {
+        "inputs": {
+          "detail": "standard",
+          "brief": [
+            "4",
+            0
+          ],
+          "engine": [
+            "5:103",
+            0
+          ],
+          "score": [
+            "10",
+            3
+          ],
+          "language": [
+            "11",
+            2
+          ],
+          "reference_lyrics": [
+            "11",
+            0
+          ]
+        },
+        "class_type": "PlenioComposePrompt",
+        "_meta": {
+          "title": "Compose Writing Prompt"
+        }
+      },
+      "12:502": {
+        "inputs": {
+          "clip_name": "gemma4_e4b_it_fp8_scaled.safetensors",
+          "type": "stable_diffusion",
+          "device": "default"
+        },
+        "class_type": "CLIPLoader",
+        "_meta": {
+          "title": "Writer model"
+        }
+      },
+      "12:503": {
+        "inputs": {
+          "prompt": [
+            "12:501",
+            0
+          ],
+          "max_length": 2048,
+          "sampling_mode": "on",
+          "sampling_mode.temperature": 0.8,
+          "sampling_mode.top_k": 64,
+          "sampling_mode.top_p": 0.95,
+          "sampling_mode.min_p": 0.05,
+          "sampling_mode.repetition_penalty": 1.05,
+          "sampling_mode.seed": [
+            "13",
+            0
+          ],
+          "sampling_mode.presence_penalty": 0.0,
+          "thinking": false,
+          "use_default_template": true,
+          "mtp": "auto",
+          "clip": [
+            "12:502",
+            0
+          ]
+        },
+        "class_type": "TextGenerate",
+        "_meta": {
+          "title": "Generate Text"
+        }
+      },
+      "12:504": {
+        "inputs": {
+          "text": [
+            "12:503",
+            0
+          ],
+          "request": [
+            "12:501",
+            1
+          ]
+        },
+        "class_type": "PlenioParseDraft",
+        "_meta": {
+          "title": "Parse Song Draft"
+        }
+      },
+      "18:901": {
+        "inputs": {
+          "mode": "simple",
+          "mode.num_iterations": 1,
+          "cache_iterations": false,
+          "initial_iteration_value": [
+            "16",
+            2
+          ]
+        },
+        "class_type": "StartLoop",
+        "_meta": {
+          "title": "Start Loop"
+        },
+        "_loop_body": [
+          "18:902",
+          "18:903",
+          "18:904",
+          "18:905",
+          "18:906",
+          "18:907"
+        ],
+        "_loop_end": "18:908"
+      },
+      "18:902": {
+        "inputs": {
+          "expression": "a + b",
+          "values.a": [
+            "18:901",
+            0
+          ],
+          "values.b": [
+            "17",
+            0
+          ]
+        },
+        "class_type": "ComfyMathExpression",
+        "_meta": {
+          "title": "take seed + iteration"
+        }
+      },
+      "18:903": {
+        "inputs": {
+          "style": [
+            "16",
+            1
+          ],
+          "lyrics": [
+            "16",
+            2
+          ],
+          "abc": [
+            "10",
+            3
+          ],
+          "seed": [
+            "18:902",
+            1
+          ],
+          "mode": [
+            "10",
+            5
+          ],
+          "max_duration": [
+            "10",
+            6
+          ],
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 100,
+          "repetition_penalty": 1.2,
+          "cfg_scale": 1.0,
+          "clip": [
+            "7",
+            0
+          ]
+        },
+        "class_type": "YuE2GenerateMusic",
+        "_meta": {
+          "title": "YuE2 Generate Music"
+        }
+      },
+      "18:904": {
+        "inputs": {
+          "seconds": [
+            "18:903",
+            1
+          ],
+          "batch_size": 1
+        },
+        "class_type": "EmptyYuE2LatentAudio",
+        "_meta": {
+          "title": "Empty YuE2 Latent Audio"
+        }
+      },
+      "18:905": {
+        "inputs": {
+          "conditioning": [
+            "18:903",
+            0
+          ]
+        },
+        "class_type": "ConditioningZeroOut",
+        "_meta": {
+          "title": "Conditioning Zero Out"
+        }
+      },
+      "18:906": {
+        "inputs": {
+          "seed": [
+            "18:902",
+            1
+          ],
+          "steps": 32,
+          "cfg": 1.0,
+          "sampler_name": "dpm_2",
+          "scheduler": "sgm_uniform",
+          "denoise": 1.0,
+          "model": [
+            "5:101",
+            0
+          ],
+          "positive": [
+            "18:903",
+            0
+          ],
+          "negative": [
+            "18:905",
+            0
+          ],
+          "latent_image": [
+            "18:904",
+            0
+          ]
+        },
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "KSampler"
+        }
+      },
+      "18:907": {
+        "inputs": {
+          "samples": [
+            "18:906",
+            0
+          ],
+          "vae": [
+            "5:101",
+            2
+          ]
+        },
+        "class_type": "VAEDecodeAudio",
+        "_meta": {
+          "title": "VAE Decode Audio"
+        }
+      },
+      "18:908": {
+        "inputs": {
+          "accumulate": true,
+          "output_value": [
+            "18:907",
+            0
+          ]
+        },
+        "class_type": "EndLoop",
+        "_meta": {
+          "title": "End Loop"
+        }
+      },
+      "25:401": {
+        "inputs": {
+          "mode": "match preset",
+          "mode.preset": "Warm - gentle (workflow default)",
+          "audio": [
+            "24",
+            0
+          ]
+        },
+        "class_type": "PlenioEQ",
+        "_meta": {
+          "title": "EQ"
+        }
+      },
+      "25:402": {
+        "inputs": {
+          "target": "streaming (-14 LUFS, -1 dBTP)",
+          "compression": "Balanced - gentle glue",
+          "sample_rate": "keep",
+          "audio": [
+            "25:401",
+            0
+          ]
+        },
+        "class_type": "PlenioLoudness",
+        "_meta": {
+          "title": "Loudness & Dynamics"
+        }
+      }
+    },
+    "hash": "95061eb475cc70252e7954667533eef99d669b2eb28c4eabb98d08e406fe2d4c"
+  },
+  "song": {
+    "id": "song",
+    "name": "YuE2 · Song",
+    "kind": "song",
+    "prompt": {
+      "2": {
+        "class_type": "PlenioSongBrief",
+        "inputs": {
+          "mode": "new song every run",
+          "template": "metal/nu-metal-vocal",
+          "description": "Heavy guitars, expressive drums, and a powerful chorus.",
+          "genre": "",
+          "mood": "",
+          "tempo": "144",
+          "length": "standard (about 3:00)",
+          "vocals": "sung",
+          "vocals.language": "English",
+          "vocals.voice": "",
+          "vocals.theme": "",
+          "key": "C♯/D♭ minor",
+          "meter": "7/8"
+        },
+        "_meta": {
+          "title": "Song Brief"
+        }
+      },
+      "5": {
+        "class_type": "SeedNode",
+        "inputs": {
+          "seed": 0
+        },
+        "_meta": {
+          "title": "Draft seed"
+        }
+      },
+      "6": {
+        "class_type": "PlenioSongSheet",
+        "inputs": {
+          "review": "as the brief says",
+          "sheet_state": "{\"schema\": \"plenio.sheet_state/1\", \"docs\": {}}",
+          "title": [
+            "4:504",
+            0
+          ],
+          "style": [
+            "4:504",
+            1
+          ],
+          "lyrics": [
+            "4:504",
+            2
+          ],
+          "artwork_prompt": [
+            "4:504",
+            3
+          ],
+          "brief": [
+            "2",
+            0
+          ],
+          "engine": [
+            "3:103",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Song Sheet · Text"
+        }
+      },
+      "8": {
+        "class_type": "PlenioScoreTools",
+        "inputs": {
+          "operation": "prepare from brief",
+          "score": [
+            "7:703",
+            0
+          ],
+          "brief": [
+            "2",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Score Tools"
+        }
+      },
+      "9": {
+        "class_type": "PlenioSongSheet",
+        "inputs": {
+          "review": "as the brief says",
+          "sheet_state": "{\"schema\": \"plenio.sheet_state/1\", \"docs\": {}}",
+          "score": [
+            "8",
+            0
+          ],
+          "context_style": [
+            "6",
+            1
+          ],
+          "context_lyrics": [
+            "6",
+            2
+          ],
+          "brief": [
+            "2",
+            0
+          ],
+          "engine": [
+            "3:103",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Song Sheet · Score"
+        }
+      },
+      "10": {
+        "class_type": "SeedNode",
+        "inputs": {
+          "seed": 0
+        },
+        "_meta": {
+          "title": "Take seed"
+        }
+      },
+      "13": {
+        "class_type": "PlenioAudioModelLoader",
+        "inputs": {
+          "kind": "super-resolution",
+          "kind.model": "pytorch_model.bin"
+        },
+        "_meta": {
+          "title": "Super-resolution model (optional)"
+        }
+      },
+      "14": {
+        "class_type": "PlenioRefine",
+        "inputs": {
+          "engine": "resample only",
+          "crossover_hz": 0.0,
+          "sr_gain": 1.0,
+          "preset": "custom - the three fields below",
+          "pre_hz": 0.0,
+          "post_hz": 0.0,
+          "seed": 0,
+          "audio": [
+            "12:1103",
+            0
+          ],
+          "model": [
+            "13",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Refine (optional)"
+        }
+      },
+      "16": {
+        "class_type": "PreviewAudio",
+        "inputs": {
+          "audio": [
+            "15:402",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Preview (mastered)"
+        }
+      },
+      "17": {
+        "class_type": "PlenioExportRelease",
+        "inputs": {
+          "folder": "plenio",
+          "naming": "{date} {time} {title} {seed}",
+          "collision": "number",
+          "flac": true,
+          "mp3": false,
+          "wav": false,
+          "tags": "title only",
+          "audio": [
+            "15:402",
+            0
+          ],
+          "title": [
+            "6",
+            0
+          ],
+          "original": [
+            "14",
+            0
+          ],
+          "reports.report_0": [
+            "6",
+            7
+          ],
+          "reports.report_1": [
+            "9",
+            7
+          ],
+          "reports.report_2": [
+            "12:1103",
+            1
+          ],
+          "reports.report_3": [
+            "12:1102",
+            1
+          ],
+          "reports.report_4": [
+            "14",
+            1
+          ],
+          "reports.report_5": [
+            "15:401",
+            1
+          ],
+          "reports.report_6": [
+            "15:402",
+            1
+          ]
+        },
+        "_meta": {
+          "title": "Export Release"
+        }
+      },
+      "3:101": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+          "ckpt_name": "yue2_3b_int8_convrot.safetensors"
+        },
+        "_meta": {
+          "title": "Load Checkpoint"
+        }
+      },
+      "3:103": {
+        "class_type": "PlenioEngine",
+        "inputs": {
+          "clip": [
+            "3:101",
+            1
+          ]
+        },
+        "_meta": {
+          "title": "Engine Profile"
+        }
+      },
+      "4:501": {
+        "class_type": "PlenioComposePrompt",
+        "inputs": {
+          "detail": "standard",
+          "brief": [
+            "2",
+            0
+          ],
+          "engine": [
+            "3:103",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Compose Writing Prompt"
+        }
+      },
+      "4:502": {
+        "class_type": "CLIPLoader",
+        "inputs": {
+          "clip_name": "gemma4_e4b_it_fp8_scaled.safetensors",
+          "type": "stable_diffusion",
+          "device": "default"
+        },
+        "_meta": {
+          "title": "Writer model"
+        }
+      },
+      "4:503": {
+        "class_type": "TextGenerate",
+        "inputs": {
+          "prompt": [
+            "4:501",
+            0
+          ],
+          "max_length": 2048,
+          "sampling_mode": "on",
+          "sampling_mode.temperature": 0.8,
+          "sampling_mode.top_k": 64,
+          "sampling_mode.top_p": 0.95,
+          "sampling_mode.min_p": 0.05,
+          "sampling_mode.repetition_penalty": 1.05,
+          "sampling_mode.seed": [
+            "5",
+            0
+          ],
+          "sampling_mode.presence_penalty": 0.0,
+          "thinking": false,
+          "use_default_template": true,
+          "mtp": "auto",
+          "clip": [
+            "4:502",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Generate Text"
+        }
+      },
+      "4:504": {
+        "class_type": "PlenioParseDraft",
+        "inputs": {
+          "text": [
+            "4:503",
+            0
+          ],
+          "request": [
+            "4:501",
+            1
+          ]
+        },
+        "_meta": {
+          "title": "Parse Song Draft"
+        }
+      },
+      "7:701": {
+        "class_type": "YuE2GenerateABC",
+        "inputs": {
+          "style": [
+            "6",
+            1
+          ],
+          "lyrics": [
+            "6",
+            9
+          ],
+          "seed": [
+            "5",
+            0
+          ],
+          "mode": "full",
+          "max_abc_tokens": 8192,
+          "temperature": 0.7,
+          "top_p": 0.9,
+          "top_k": 30,
+          "repetition_penalty": 1.005,
+          "penalty_window": 100,
+          "clip": [
+            "3:101",
+            1
+          ]
+        },
+        "_meta": {
+          "title": "YuE2 Generate ABC"
+        }
+      },
+      "7:702": {
+        "class_type": "PrimitiveString",
+        "inputs": {
+          "value": ""
+        },
+        "_meta": {
+          "title": "No score"
+        }
+      },
+      "7:703": {
+        "class_type": "ComfySwitchNode",
+        "inputs": {
+          "switch": true,
+          "on_false": [
+            "7:702",
+            0
+          ],
+          "on_true": [
+            "7:701",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "If/Else Switch"
+        }
+      },
+      "11:801": {
+        "class_type": "YuE2GenerateMusic",
+        "inputs": {
+          "style": [
+            "6",
+            1
+          ],
+          "lyrics": [
+            "6",
+            2
+          ],
+          "abc": [
+            "9",
+            3
+          ],
+          "seed": [
+            "10",
+            0
+          ],
+          "mode": [
+            "9",
+            5
+          ],
+          "max_duration": [
+            "9",
+            6
+          ],
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 100,
+          "repetition_penalty": 1.2,
+          "cfg_scale": 1.0,
+          "clip": [
+            "3:101",
+            1
+          ]
+        },
+        "_meta": {
+          "title": "YuE2 Generate Music"
+        }
+      },
+      "11:802": {
+        "class_type": "EmptyYuE2LatentAudio",
+        "inputs": {
+          "seconds": [
+            "11:801",
+            1
+          ],
+          "batch_size": 1
+        },
+        "_meta": {
+          "title": "Empty YuE2 Latent Audio"
+        }
+      },
+      "11:803": {
+        "class_type": "ConditioningZeroOut",
+        "inputs": {
+          "conditioning": [
+            "11:801",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Conditioning Zero Out"
+        }
+      },
+      "11:804": {
+        "class_type": "KSampler",
+        "inputs": {
+          "seed": [
+            "10",
+            0
+          ],
+          "steps": 32,
+          "cfg": 1.0,
+          "sampler_name": "dpm_2",
+          "scheduler": "sgm_uniform",
+          "denoise": 1.0,
+          "model": [
+            "3:101",
+            0
+          ],
+          "positive": [
+            "11:801",
+            0
+          ],
+          "negative": [
+            "11:803",
+            0
+          ],
+          "latent_image": [
+            "11:802",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "KSampler"
+        }
+      },
+      "11:805": {
+        "class_type": "VAEDecodeAudio",
+        "inputs": {
+          "samples": [
+            "11:804",
+            0
+          ],
+          "vae": [
+            "3:101",
+            2
+          ]
+        },
+        "_meta": {
+          "title": "VAE Decode Audio"
+        }
+      },
+      "12:1101": {
+        "class_type": "PlenioAudioModelLoader",
+        "inputs": {
+          "kind": "separation",
+          "kind.model": "model_bs_roformer_ep_17_sdr_9.6568.ckpt"
+        },
+        "_meta": {
+          "title": "Separation model"
+        }
+      },
+      "12:1102": {
+        "class_type": "PlenioSeparateStems",
+        "inputs": {
+          "audio": [
+            "11:805",
+            0
+          ],
+          "model": [
+            "12:1101",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Separate Stems"
+        }
+      },
+      "12:1103": {
+        "class_type": "PlenioStemMixer",
+        "inputs": {
+          "mix": "",
+          "stems": [
+            "12:1102",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Stem Mixer"
+        }
+      },
+      "15:401": {
+        "class_type": "PlenioEQ",
+        "inputs": {
+          "mode": "match preset",
+          "mode.preset": "Warm - gentle (workflow default)",
+          "audio": [
+            "14",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "EQ"
+        }
+      },
+      "15:402": {
+        "class_type": "PlenioLoudness",
+        "inputs": {
+          "target": "streaming (-14 LUFS, -1 dBTP)",
+          "compression": "Balanced - gentle glue",
+          "sample_rate": "48000",
+          "audio": [
+            "15:401",
+            0
+          ]
+        },
+        "_meta": {
+          "title": "Loudness & Dynamics"
+        }
+      }
+    },
+    "hash": "2b29bced99fbdde04c978813c25d83cec819b3d35b1c28afc9f5f90240fe8b3b"
+  }
+}
