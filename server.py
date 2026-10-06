@@ -68,7 +68,15 @@ def default_form(profile):
             'lyricsMode': lyrics_mode, 'source': source, 'seed': seeds[-1] if seeds else 0}
 
 
-def build_prompt(profile, params):
+def vocal_fields(node, schema):
+    required = schema.get(node['class_type'], {}).get('input', {}).get('required', {})
+    spec = required.get('vocals', [None, {}])
+    options = spec[1].get('options', []) if len(spec) > 1 else []
+    branch = next((o for o in options if isinstance(o, dict) and o.get('key') == node['inputs'].get('vocals')), {})
+    return branch.get('inputs', {}).get('required', {})
+
+
+def build_prompt(profile, params, schema=None):
     """Only scalar run inputs change; every class and connection stays intact."""
     prompt = copy.deepcopy(profile['prompt'])
     _, node = brief_node(prompt)
@@ -78,6 +86,16 @@ def build_prompt(profile, params):
         for key, value in params.get('fields', {}).items():
             if key in permitted and key in node['inputs'] and isinstance(value, str):
                 node['inputs'][key] = value
+        # Dynamic combo children depend on the selected vocal mode, not on the
+        # branch that happened to be active when the graph was captured.
+        for key, spec in vocal_fields(node, schema or {}).items():
+            name = 'vocals.' + key
+            config = spec[1] if len(spec) > 1 else {}
+            if name not in node['inputs'] and 'default' in config:
+                node['inputs'][name] = copy.deepcopy(config['default'])
+            value = params.get('fields', {}).get(name)
+            if (spec[0] == 'BOOLEAN' and isinstance(value, bool)) or (spec[0] in ('STRING', 'COMBO') and isinstance(value, str)):
+                node['inputs'][name] = value
     for n in prompt.values():
         inputs = n['inputs']
         if n['class_type'] == 'LoadAudio' and params.get('source'):
@@ -100,7 +118,8 @@ def build_prompt(profile, params):
         if params.get('randomize'):
             for key in ('seed', 'noise_seed', 'sampling_mode.seed'):
                 if key in inputs and isinstance(inputs[key], int):
-                    inputs[key] = secrets.randbelow(2**48)
+                    # Shared safe range includes PlenioRefine's uint32 limit.
+                    inputs[key] = secrets.randbelow(2**32)
         elif params.get('seed') is not None and n['class_type'] == 'SeedNode':
             inputs['seed'] = int(params['seed'])
     return prompt
@@ -221,7 +240,11 @@ async def profiles(request):
         _, node = brief_node(profile['prompt'])
         required = studio.schema.get(node['class_type'], {}).get('input', {}).get('required', {})
         return {key: (value[0] if isinstance(value[0], list) else value[1].get('options', [])) for key, value in required.items() if len(value) > 1 or isinstance(value[0], list)}
-    return web.json_response([{'id': p['id'], 'name': p['name'], 'kind': p['kind'], 'hash': p['hash'], 'defaults': default_form(p), 'options': options(p)} for p in studio.profiles.values()])
+    def vocal_options(profile):
+        _, node = brief_node(profile['prompt'])
+        spec = studio.schema.get(node['class_type'], {}).get('input', {}).get('required', {}).get('vocals', [None, {}])
+        return {o['key']: o.get('inputs', {}).get('required', {}) for o in spec[1].get('options', []) if isinstance(o, dict)}
+    return web.json_response([{'id': p['id'], 'name': p['name'], 'kind': p['kind'], 'hash': p['hash'], 'defaults': default_form(p), 'options': options(p), 'vocalOptions': vocal_options(p)} for p in studio.profiles.values()])
 
 
 async def status(request):
@@ -292,10 +315,11 @@ async def generate(request):
     count = int(data.get('count', 1))
     if not 1 <= count <= 8:
         raise ValueError('Choose between 1 and 8 takes.')
+    schema = await studio.engine('/object_info')
     ids = []
     for _ in range(count):
         try:
-            ids.append(await studio.submit(build_prompt(profile, data), profile['id']))
+            ids.append(await studio.submit(build_prompt(profile, data, schema), profile['id']))
         except (ValueError, aiohttp.ClientError, asyncio.TimeoutError) as error:
             message = (f'{len(ids)} take(s) were queued before submission stopped. ' if ids else '') + str(error)
             return web.json_response({'ids': ids, 'error': message}, status=400)

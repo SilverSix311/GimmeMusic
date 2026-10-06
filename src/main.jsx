@@ -134,10 +134,12 @@ function App() {
           </>}
           {formTab==='lyrics'&&<>
             <Field label="VOCALS"><Select label="Vocals" value={form.fields.vocals} onChange={v=>field('vocals',v)} options={opts('vocals',isCover?['original lyrics','new lyrics','instrumental']:['sung','instrumental'])}/></Field>
-            {'vocals.language' in form.fields&&<div className="form-row"><Field label="LANGUAGE"><input value={form.fields['vocals.language']||''} onChange={e=>field('vocals.language',e.target.value)}/></Field><Field label="VOICE"><input value={form.fields['vocals.voice']||''} placeholder="Raw, intimate, raspy…" onChange={e=>field('vocals.voice',e.target.value)}/></Field></div>}
+            {Object.entries(profile?.vocalOptions?.[form.fields.vocals]||{}).map(([key,[type,config={}]])=>{
+              const name='vocals.'+key, label=key.replaceAll('_',' ').toUpperCase(), value=form.fields[name]??config.default??'';
+              return <Field key={name} label={label}>{type==='BOOLEAN'?<Select label={label} value={String(value)} onChange={v=>field(name,v==='true')} options={[{value:'false',label:'Off'},{value:'true',label:'On'}]}/>:type==='COMBO'?<Select label={label} value={value} onChange={v=>field(name,v)} options={config.options||[]}/>:<input aria-label={label} value={value} onChange={e=>field(name,e.target.value)}/>}</Field>;
+            })}
             <Field label="LYRIC SOURCE"><Select label="Lyric source" value={form.lyricsMode} onChange={lyricsMode=>setForm(old=>({...old,lyricsMode}))} options={[{value:'preserve',label:'Use workflow’s lyric settings'},{value:'auto',label:isCover?'Transcribe / write from source':'Write new lyrics for me'},{value:'manual',label:'Use my own lyrics'}]}/></Field>
             {form.lyricsMode==='manual'?<Field label="YOUR WORDS"><textarea className="lyrics-input" aria-label="Custom lyrics" placeholder={'[Verse]\nYour story starts here…\n\n[Chorus]\nMake it unforgettable.'} value={form.lyrics} onChange={e=>setForm(old=>({...old,lyrics:e.target.value}))}/></Field>:<div className="lyrics-empty"><Mic2 size={32}/><h3>{isCover?'A new voice for your song.':'Leave room for inspiration.'}</h3><p>{isCover?'Your workflow handles transcription and lyric creation. The Song Sheet will pause when a review is needed.':'The workflow’s writer follows your sound and mood. Choose “Use my own lyrics” to bring your words.'}</p></div>}
-            {'vocals.theme' in form.fields&&<Field label="LYRIC THEME"><input value={form.fields['vocals.theme']||''} onChange={e=>field('vocals.theme',e.target.value)} placeholder="What’s the story?"/></Field>}
           </>}
           {formTab==='settings'&&<>
             <Field label="WORKFLOW MODE"><Select label="Workflow mode" value={form.fields.mode} onChange={v=>field('mode',v)} options={opts('mode',isCover?['one cover, stop to review','new cover every run']:['new song every run','one song, stop to review'])}/></Field>

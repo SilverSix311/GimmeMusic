@@ -10,6 +10,44 @@ server.studio.profiles = server.read_json(server.ROOT / 'workflows/profiles.json
 
 
 class GraphTests(unittest.TestCase):
+    def test_all_vocal_modes_supply_required_children(self):
+        schema = server.read_json(Path(__file__).with_name('node-schema.json'))
+        for profile in server.studio.profiles.values():
+            original = copy.deepcopy(profile['prompt'])
+            _, brief = server.brief_node(original)
+            branches = schema[brief['class_type']]['input']['required']['vocals'][1]['options']
+            for branch in branches:
+                params = {'fields': {'vocals': branch['key']}, 'randomize': True}
+                result = server.build_prompt(profile, params, schema)
+                _, changed = server.brief_node(result)
+                for key, spec in branch.get('inputs', {}).get('required', {}).items():
+                    self.assertIn('vocals.' + key, changed['inputs'])
+                self.assertEqual(profile['prompt'], original)
+                for key, node in original.items():
+                    self.assertEqual(node['class_type'], result[key]['class_type'])
+                    for name, value in node['inputs'].items():
+                        if isinstance(value, list):
+                            self.assertEqual(value, result[key]['inputs'][name])
+
+    def test_seed_upper_boundary_fits_refinement_node(self):
+        with patch.object(server.secrets, 'randbelow', side_effect=lambda maximum: maximum - 1):
+            for profile in server.studio.profiles.values():
+                prompt = server.build_prompt(profile, {'randomize': True})
+                for node in prompt.values():
+                    for name in ('seed', 'noise_seed', 'sampling_mode.seed'):
+                        value = node['inputs'].get(name)
+                        if isinstance(value, int):
+                            self.assertLessEqual(value, 4294967295)
+
+    def test_new_branch_accepts_custom_settings(self):
+        schema = server.read_json(Path(__file__).with_name('node-schema.json'))
+        result = server.build_prompt(server.studio.profiles['cover'], {'fields': {'vocals': 'instrumental', 'vocals.melody': 'accompaniment only', 'vocals.lead_instrument': 'piano'}}, schema)
+        _, brief = server.brief_node(result)
+        self.assertEqual(brief['inputs']['vocals.melody'], 'accompaniment only')
+        self.assertEqual(brief['inputs']['vocals.lead_instrument'], 'piano')
+        result = server.build_prompt(server.studio.profiles['cover'], {'fields': {'vocals': 'new lyrics', 'vocals.phrasing_reference': True}}, schema)
+        self.assertTrue(server.brief_node(result)[1]['inputs']['vocals.phrasing_reference'])
+
     def test_preserve_is_exact_copy(self):
         self.assertEqual(set(server.studio.profiles), {'song', 'cover'})
         for profile in server.studio.profiles.values():
@@ -48,7 +86,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
     async def test_batch_submits_independent_graphs(self):
         request = AsyncMock()
         request.json.return_value = {'profile': 'song', 'count': 2, 'randomize': True}
-        with patch.object(server.studio, 'submit', new=AsyncMock(side_effect=['one', 'two'])) as submit:
+        with patch.object(server.studio, 'engine', AsyncMock(return_value={})), patch.object(server.studio, 'submit', new=AsyncMock(side_effect=['one', 'two'])) as submit:
             response = await server.generate(request)
             self.assertEqual(json.loads(response.body)['ids'], ['one', 'two'])
             self.assertNotEqual(submit.call_args_list[0].args[0], submit.call_args_list[1].args[0])

@@ -1,0 +1,193 @@
+{
+  "PlenioCoverBrief": {
+    "input": {
+      "required": {
+        "vocals": [
+          "COMFY_DYNAMICCOMBO_V3",
+          {
+            "tooltip": "Instrumental (default), the original lyrics of the source, or new lyrics on its melody.",
+            "options": [
+              {
+                "key": "instrumental",
+                "inputs": {
+                  "required": {
+                    "melody": [
+                      "COMBO",
+                      {
+                        "tooltip": "An instrument plays the vocal melody, or accompaniment only.",
+                        "default": "instrument plays the lead",
+                        "multiselect": false,
+                        "options": [
+                          "instrument plays the lead",
+                          "accompaniment only"
+                        ]
+                      }
+                    ],
+                    "lead_instrument": [
+                      "STRING",
+                      {
+                        "tooltip": "Optional lead instrument, e.g. 'piano'.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "original lyrics",
+                "inputs": {
+                  "required": {
+                    "language": [
+                      "STRING",
+                      {
+                        "tooltip": "Language of the source's lyrics; 'auto' detects it from the singing.",
+                        "default": "auto",
+                        "multiline": false
+                      }
+                    ],
+                    "voice": [
+                      "STRING",
+                      {
+                        "tooltip": "Vocal character, e.g. 'soft female voice'.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "new lyrics",
+                "inputs": {
+                  "required": {
+                    "language": [
+                      "STRING",
+                      {
+                        "tooltip": "Language of the new lyrics.",
+                        "default": "English",
+                        "multiline": false
+                      }
+                    ],
+                    "voice": [
+                      "STRING",
+                      {
+                        "tooltip": "Vocal character.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ],
+                    "theme": [
+                      "STRING",
+                      {
+                        "tooltip": "What the new lyrics are about.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ],
+                    "phrasing_reference": [
+                      "BOOLEAN",
+                      {
+                        "tooltip": "Show the writer the source's transcribed lyrics as a phrasing reference (runs the lyrics ASR).",
+                        "default": false
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "PlenioSongBrief": {
+    "input": {
+      "required": {
+        "vocals": [
+          "COMFY_DYNAMICCOMBO_V3",
+          {
+            "tooltip": "Sung song or instrumental. Instrumental hides all vocal settings.",
+            "options": [
+              {
+                "key": "sung",
+                "inputs": {
+                  "required": {
+                    "language": [
+                      "STRING",
+                      {
+                        "tooltip": "Language of the lyrics, e.g. 'English'.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ],
+                    "voice": [
+                      "STRING",
+                      {
+                        "tooltip": "Vocal character, e.g. 'warm female voice'.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ],
+                    "theme": [
+                      "STRING",
+                      {
+                        "tooltip": "What the lyrics are about.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "instrumental",
+                "inputs": {
+                  "required": {
+                    "melody": [
+                      "COMBO",
+                      {
+                        "tooltip": "Whether an instrument carries a lead melody or the song is accompaniment only.",
+                        "default": "instrument plays the lead",
+                        "multiselect": false,
+                        "options": [
+                          "instrument plays the lead",
+                          "accompaniment only"
+                        ]
+                      }
+                    ],
+                    "lead_instrument": [
+                      "STRING",
+                      {
+                        "tooltip": "Optional lead instrument, e.g. 'saxophone'.",
+                        "default": "",
+                        "multiline": false
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "PlenioRefine": {
+    "input": {
+      "required": {},
+      "optional": {
+        "seed": [
+          "INT",
+          {
+            "tooltip": "Seed of the model: the same seed gives the same result.",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "control_after_generate": "fixed"
+          }
+        ]
+      }
+    }
+  }
+}
