@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))  # Windows embedded Python omits the script directory.
 from workflow_edit import DOCUMENTS, apply_node_inputs, apply_documents
 CONFIG = json.loads((ROOT / 'config.json').read_text(encoding='utf-8-sig')) if (ROOT / 'config.json').is_file() else {}
-COMFY = Path(os.environ.get('GIMMEMUSIC_COMFY_ROOT') or CONFIG.get('comfy_root') or ROOT.parent / 'Plenio-Portable/ComfyUI_windows_portable/ComfyUI').resolve()
+COMFY = (ROOT / Path(os.environ.get('GIMMEMUSIC_COMFY_ROOT') or CONFIG.get('comfy_root') or ROOT.parent / 'Plenio-Portable/ComfyUI_windows_portable/ComfyUI')).resolve()
 OUTPUT = COMFY / 'output'
 DATA = ROOT / 'data'
 ENGINE = (os.environ.get('GIMMEMUSIC_ENGINE_URL') or CONFIG.get('engine_url') or 'http://127.0.0.1:8189').rstrip('/')

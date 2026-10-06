@@ -18,13 +18,28 @@ Compose songs, make covers, hunt for a great seed, and browse the music you crea
 - Real Plenio exports with favorites, search, playback, waveforms, seeking, and downloads.
 - Local operation and locally bundled fonts; no hosted account required.
 
+## One-click portable install (Windows / NVIDIA)
+
+[Download GimmeMusic Portable](https://github.com/SilverSix311/GimmeMusic/releases/latest/download/GimmeMusic-portable.zip), extract it into the folder where you want to keep it, then double-click **Install-GimmeMusic.bat**. Do not run it from inside the ZIP. Use a short path such as `D:\GimmeMusic`.
+
+The installer downloads a pinned ComfyUI NVIDIA portable runtime (including Python/PyTorch), portable Git, Plenio, every model needed by the studio's song and cover profiles, and the lyrics-transcription model. The release ZIP includes the built studio; source ZIP installs build it with a folder-local Node.js. No system Python, Git, Node, CUDA toolkit, or administrator access is required. An installed NVIDIA graphics driver is required; AMD/macOS/Linux need a separate setup.
+
+- Plan for **40 GiB free space**. Models total approximately **17.2 GiB**, plus a 1.9 GiB runtime download and dependencies. Downloads are pinned, checksum-verified, and resumable. Rerun the installer after interruption; completed stages and verified models are reused.
+- **Start-GimmeMusic.bat** starts both services and opens the studio. **Stop-Portable.bat** stops this portable copy. Ports 8189 and 8195 must be free; another installation is not silently reused or stopped.
+- Move the entire folder to keep it portable. Models, downloads, caches, dependencies, workflows and exports stay inside `runtime/`; studio data stays in `data/`. Configuration and embedded-Python import paths are relative.
+- Ready-to-use **GimmeMusic - song** and **GimmeMusic - cover** visual workflows are installed into ComfyUI's `user/default/workflows/GimmeMusic`. They are serialized from the same public execution profiles the studio uses. Covers still need your source recording.
+- Setup includes the original-lyrics extension and the nominal-24-GB compatibility patch. The latter does not guarantee that long recordings fit in VRAM.
+- Final verification starts a temporary engine on a free port, checks CUDA, all workflow node classes, model filenames and the lyrics extension, then stops it. It does **not** generate a song. Logs are in `runtime/logs/`.
+
+Use the release's `SHA256SUMS.txt` to verify its ZIP if desired. Runtime and model licenses remain those of their upstream projects. Optional MiniMax and artwork-generation templates are not part of the studio's ready-to-use model set.
+
 ## Built-in Plenio integration
 
-Includes **song and cover API profiles**, all six upstream **ComfyUI workflow templates**, a **pinned Plenio installer**, and a **model-download manifest**. Setup fetches Plenio at the recorded upstream commit. Large models, ComfyUI, and Python runtimes are installed separately.
+Includes **song and cover API profiles**, all six upstream **ComfyUI workflow templates**, a **pinned Plenio installer**, and a **model-download manifest**. Setup fetches Plenio at the recorded upstream commit. The portable installer fetches the runtime and required models together. Advanced setup can instead attach to an existing ComfyUI installation.
 
 GimmeMusic submits copies of the graphs and changes only requested run inputs. It never rewrites saved workflows or the open ComfyUI canvas. Existing `data/profiles.json` takes precedence over bundled defaults, preserving local profiles during upgrades. Public profiles contain generic prompts, with no personal lyrics, source filenames, or old approvals.
 
-## Windows setup
+## Advanced setup: existing ComfyUI
 
 Requires Git, Node.js 20.19+ or 22.12+, and a recent working ComfyUI installation with YuE2 support and its Python environment. The tested ComfyUI commit is in `workflows/upstream.json`; older releases may lack required YuE2, text-generation, switch, or loop nodes.
 
@@ -48,11 +63,11 @@ Review `workflows/models.json` and upstream model terms, then download missing s
 & 'C:\ComfyUI_windows_portable\python_embeded\python.exe' scripts/download_models.py --comfy-root 'C:\ComfyUI_windows_portable\ComfyUI'
 ```
 
-Uses curl, resumes partial downloads, and skips existing files. Downloads can be many gigabytes. Faster-whisper may additionally download weights on first use. Additional MiniMax, mastering, and DAW templates are for ComfyUI; the studio exposes only YuE2 song and cover profiles, and its manifest excludes MiniMax models.
+Uses curl, resumes partial downloads, and verifies every file by size and SHA-256. Whisper assets are included so the lyrics pass does not need a first-run model download. Additional MiniMax, mastering, and DAW templates are for ComfyUI; the studio exposes only YuE2 song and cover profiles, and its manifest excludes MiniMax models.
 
 ### Optional nominal 24 GB card compatibility
 
-`patches/nominal-24gb-vram.patch` lets cards reporting slightly below 24 GiB attempt transcription of sources longer than 300 seconds. It changes a capacity check to 23.5 GiB; it does not lower actual memory use or guarantee a long cover will fit. It is **not applied automatically**. In a clean Plenio checkout matching the pinned commit, use `git apply <absolute-path-to-patch>`. Existing installations with this fix need no action.
+`patches/nominal-24gb-vram.patch` lets cards reporting slightly below 24 GiB attempt transcription of sources longer than 300 seconds. It changes a capacity check to 23.5 GiB; it does not lower actual memory use or guarantee a long cover will fit. The portable installer applies it automatically; advanced setup leaves it optional. In a clean Plenio checkout matching the pinned commit, use `git apply <absolute-path-to-patch>`. Existing installations with this fix need no action.
 
 ## Development and testing
 
@@ -87,6 +102,10 @@ npm run test:playback
 ```
 
 Browser generation tests intercept submissions; backend tests mock the engine. They never queue GPU renders. The template in `ci/github-checks.yml` builds the frontend and runs backend tests without models or a private library. To enable GitHub Actions, copy it to `.github/workflows/checks.yml` using credentials with workflow permission. A complete render on a new machine still depends on compatible ComfyUI, installed models, and sufficient GPU memory.
+
+## Building a portable release
+
+After committing changes, run `npm run build` and `python scripts/package_portable.py`. The ZIP under `runtime/releases/` contains committed application sources and the built UI, never local data, credentials, models, or runtime files. `node scripts/export_workflows.mjs` regenerates the two visual studio workflows from public profiles using an isolated headless ComfyUI session and verifies their round-trip inputs and connections.
 
 ## Local data
 

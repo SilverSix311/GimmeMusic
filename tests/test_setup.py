@@ -40,3 +40,27 @@ class SetupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 setup_module.setup(directory, 'http://127.0.0.1:8189', True)
+
+    def test_portable_paths_survive_moving_the_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            comfy = root / 'runtime/ComfyUI_windows_portable/ComfyUI'
+            (comfy / 'custom_nodes/Plenio-Music-Production-System/plenio').mkdir(parents=True)
+            (comfy / 'main.py').touch()
+            (root / 'workflows/studio').mkdir(parents=True)
+            (root / 'workflows/studio/GimmeMusic - song.json').write_text('{}')
+            (root / 'workflows/upstream.json').write_text('{}')
+            python = comfy.parent / 'python_embeded/python.exe'
+            python.parent.mkdir()
+            python.touch()
+            pth = python.parent / 'python312._pth'
+            pth.write_text('.\nimport site\n')
+            with patch.object(setup_module, 'ROOT', root), patch.object(setup_module.sys, 'executable', str(python)), patch.object(setup_module.subprocess, 'run'):
+                setup_module.setup(comfy, 'http://127.0.0.1:8189', True, portable=True)
+            config = json.loads((root / 'config.json').read_text())
+            self.assertTrue(config['portable'])
+            self.assertFalse(Path(config['comfy_root']).is_absolute())
+            self.assertFalse(Path(config['python']).is_absolute())
+            self.assertEqual((root / config['python']).resolve(), python.resolve())
+            self.assertFalse(Path(pth.read_text().splitlines()[-1]).is_absolute())
+            self.assertTrue((comfy / 'user/default/workflows/GimmeMusic/GimmeMusic - song.json').is_file())

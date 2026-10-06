@@ -1,38 +1,90 @@
 [
   {
     "id": "yue2-3b-int8",
-    "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/2f76ca75e6ee094169de899cc7fc99d6887e2196/checkpoints/yue2_3b_int8_convrot.safetensors",
     "folder": "checkpoints",
-    "file": "yue2_3b_int8_convrot.safetensors"
+    "file": "yue2_3b_int8_convrot.safetensors",
+    "size": 3960938800,
+    "sha256": "96fe199377309001ed8cd26a944baeee8cc31a20ba7c36d1d3c0a7e1f4149db6"
   },
   {
     "id": "yue2-instrumental-lora",
     "url": "https://huggingface.co/Mothersuperior/YuE2-instrumental-cot-full-loras/resolve/947f2f4b28978b2b6c3e316e6a87925c76bf3c4b/ar_lora_inst_v3abc_comfyui.safetensors",
     "folder": "loras",
-    "file": "ar_lora_inst_v3abc_comfyui.safetensors"
+    "file": "ar_lora_inst_v3abc_comfyui.safetensors",
+    "size": 212891736,
+    "sha256": "de6a11d5701df103a191c87dc73115266e2420f3834739319dec5c24d2119f31"
   },
   {
     "id": "sheetsage2",
-    "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/audio_encoders/sheetsage2_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/2f76ca75e6ee094169de899cc7fc99d6887e2196/audio_encoders/sheetsage2_bf16.safetensors",
     "folder": "audio_encoders",
-    "file": "sheetsage2_bf16.safetensors"
+    "file": "sheetsage2_bf16.safetensors",
+    "size": 1386868122,
+    "sha256": "5fd960ce3df281e3f3a889d174584d88f96247711480cf96377b12d7e8b6adc5"
   },
   {
     "id": "universr-audio",
-    "url": "https://huggingface.co/woongzip1/universr-audio/resolve/main/pytorch_model.bin",
+    "url": "https://huggingface.co/woongzip1/universr-audio/resolve/1c3294844285af851b6ffa56cbde4e43cd41fc2b/pytorch_model.bin",
     "folder": "audio_sr",
-    "file": "pytorch_model.bin"
+    "file": "pytorch_model.bin",
+    "size": 229072395,
+    "sha256": "eb99f98943cc32fa82226c2da14b32b5d890416070af4946acbce442b30dc20b"
   },
   {
     "id": "bs-roformer-4stem",
     "url": "https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.12/model_bs_roformer_ep_17_sdr_9.6568.ckpt",
     "folder": "audio_separation",
-    "file": "model_bs_roformer_ep_17_sdr_9.6568.ckpt"
+    "file": "model_bs_roformer_ep_17_sdr_9.6568.ckpt",
+    "size": 527385512,
+    "sha256": "3e9daecd70aaed5b5a0d1f861cc4d77eaa45afb3fc6301b1cf32c1be0f5868fb"
   },
   {
     "id": "gemma4-e4b-writer",
-    "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e4b_it_fp8_scaled.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/63d0f7c476756b88910170c1df75e2384ea1af31/text_encoders/gemma4_e4b_it_fp8_scaled.safetensors",
     "folder": "text_encoders",
-    "file": "gemma4_e4b_it_fp8_scaled.safetensors"
+    "file": "gemma4_e4b_it_fp8_scaled.safetensors",
+    "size": 9057782194,
+    "sha256": "bf0b4fa2e41a25684dc9e9b256cd505564f02fed09be3da95ce024e653e2c52b"
+  },
+  {
+    "id": "whisper-config.json",
+    "url": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/config.json",
+    "folder": "plenio/asr/faster-whisper-large-v3",
+    "file": "config.json",
+    "size": 2394,
+    "sha256": "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9"
+  },
+  {
+    "id": "whisper-model.bin",
+    "url": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/model.bin",
+    "folder": "plenio/asr/faster-whisper-large-v3",
+    "file": "model.bin",
+    "size": 3087284237,
+    "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1"
+  },
+  {
+    "id": "whisper-preprocessor_config.json",
+    "url": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/preprocessor_config.json",
+    "folder": "plenio/asr/faster-whisper-large-v3",
+    "file": "preprocessor_config.json",
+    "size": 340,
+    "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711"
+  },
+  {
+    "id": "whisper-tokenizer.json",
+    "url": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/tokenizer.json",
+    "folder": "plenio/asr/faster-whisper-large-v3",
+    "file": "tokenizer.json",
+    "size": 2480617,
+    "sha256": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca"
+  },
+  {
+    "id": "whisper-vocabulary.json",
+    "url": "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/vocabulary.json",
+    "folder": "plenio/asr/faster-whisper-large-v3",
+    "file": "vocabulary.json",
+    "size": 1068114,
+    "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
   }
 ]
