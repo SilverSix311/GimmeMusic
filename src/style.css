@@ -28,3 +28,7 @@
 
 .cover-lyrics-entry {display:flex;align-items:center;gap:12px;width:100%;padding:15px;margin:0 0 22px;text-align:left;color:#8bf2f3;background:#8bf2f309;border:1px solid #8bf2f32b;border-radius:10px;cursor:pointer;font:inherit}
 .cover-lyrics-entry span {flex:1}.cover-lyrics-entry strong {display:block;font-size:12px}.cover-lyrics-entry small {display:block;font-size:10px;color:#b8a6c3;margin-top:5px}.cover-lyrics-entry:hover {background:#8bf2f315;border-color:#8bf2f377}
+
+.engine-controls {padding:10px 0;color:#b7a7c3}.engine-buttons {display:flex;gap:5px}.engine-buttons button {display:flex;align-items:center;justify-content:center;gap:5px;flex:1;padding:9px 4px;border:1px solid #ffffff18;background:#ffffff06;border-radius:7px;font:inherit;font-size:10px;color:#e2cde9;cursor:pointer}.engine-buttons button:hover:not(:disabled) {border-color:#88e9ed88;color:#88e9ed}.engine-buttons button:disabled {opacity:.4;cursor:default}.idle-setting {display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:10px;gap:5px}.idle-setting select {width:70px;padding:5px;background:#17101d;border:1px solid #ffffff18;border-radius:5px;color:#dfd2e6;font:inherit}.engine-controls p {font-size:10px;line-height:1.5;margin:9px 0 0;color:#9785a6}
+@media(min-width:1101px){.sidebar{overflow-y:auto}.sidebar>*{flex-shrink:0}}
+@media(min-width:1101px) and (max-height:1100px){.sidebar-session{display:none}.sidebar .brand{margin-bottom:25px}.sidebar-bottom{padding-top:14px}}

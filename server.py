@@ -18,6 +18,7 @@ from aiohttp import web
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))  # Windows embedded Python omits the script directory.
 from workflow_edit import DOCUMENTS, apply_node_inputs, apply_documents
+from engine_control import EngineControl, install_bridge
 CONFIG = json.loads((ROOT / 'config.json').read_text(encoding='utf-8-sig')) if (ROOT / 'config.json').is_file() else {}
 COMFY = (ROOT / Path(os.environ.get('GIMMEMUSIC_COMFY_ROOT') or CONFIG.get('comfy_root') or ROOT.parent / 'Plenio-Portable/ComfyUI_windows_portable/ComfyUI')).resolve()
 OUTPUT = COMFY / 'output'
@@ -253,6 +254,7 @@ class Studio:
         return self.catalogue
 
     async def submit(self, prompt, profile, parent=None, project_id=None):
+        control.touch(generation=True)
         if parent and project_id is None:
             project_id = self.jobs[parent].get('projectId')
         result = await self.engine('/prompt', {'prompt': prompt, 'client_id': self.client_id})
@@ -270,11 +272,13 @@ class Studio:
                             event = json.loads(message.data)
                             if event['type'] in ('executing', 'progress', 'execution_start'):
                                 self.event = event
+                                control.touch(generation=True)
             except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
                 await asyncio.sleep(3)
 
 
 studio = Studio()
+control = EngineControl(ROOT, COMFY, ENGINE, CONFIG, studio.engine)
 
 
 @web.middleware
@@ -320,9 +324,20 @@ async def brief_fields(request):
 async def status(request):
     try:
         stats, queue = await asyncio.gather(studio.engine('/system_stats'), studio.engine('/queue'))
-        return web.json_response({'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': True, 'stats': stats, 'running': len(queue['queue_running']), 'pending': len(queue['queue_pending']), 'event': studio.event})
+        return web.json_response({'control': control.snapshot(), 'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': True, 'stats': stats, 'running': len(queue['queue_running']), 'pending': len(queue['queue_pending']), 'event': studio.event})
     except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
-        return web.json_response({'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': False, 'running': 0, 'pending': 0})
+        return web.json_response({'control': control.snapshot(), 'app': 'GimmeMusic', 'engine_url': ENGINE, 'online': False, 'running': 0, 'pending': 0})
+
+
+async def engine_action(request):
+    data = await request.json()
+    await control.action(data.get('action'), data.get('idle_minutes'))
+    return web.json_response(control.snapshot())
+
+
+async def engine_activity(request):
+    control.touch()
+    return web.json_response({'ok': True})
 
 
 async def library(request):
@@ -641,17 +656,20 @@ async def assign_project(request):
 async def lifecycle(app):
     studio.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
     await studio.bootstrap()
+    await asyncio.to_thread(install_bridge, ROOT, COMFY)
+    idle_watcher = asyncio.create_task(control.watch())
     watcher = asyncio.create_task(studio.watch())
     yield
     watcher.cancel()
-    await asyncio.gather(watcher, return_exceptions=True)
+    idle_watcher.cancel()
+    await asyncio.gather(watcher, idle_watcher, return_exceptions=True)
     await studio.session.close()
 
 
 def create_app():
     app = web.Application(middlewares=[errors], client_max_size=301 * 1024 * 1024)
     app.cleanup_ctx.append(lifecycle)
-    app.add_routes([web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
+    app.add_routes([web.post('/api/engine', engine_action), web.post('/api/engine/activity', engine_activity), web.get('/api/profiles', profiles), web.get('/api/status', status), web.get('/api/library', library),
         web.post('/api/brief/fields', brief_fields), web.get('/api/workbench', workbench), web.post('/api/sheets/validate', validate_sheets),
         web.get('/api/projects', projects_api), web.post('/api/projects', projects_api), web.post('/api/tracks/{id}/project', assign_project),
         web.post('/api/favorites/{id}', favorite), web.get('/api/inputs', inputs), web.post('/api/upload', upload),

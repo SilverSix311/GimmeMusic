@@ -16,6 +16,7 @@ Compose songs, make covers, hunt for a great seed, and browse the music you crea
 - Track three-dot menus with **Load in editor** and project assignment. Editing creates a new take without overwriting the source release.
 - Local projects with grouped tracks, recent generations, naming, and saved drafts (including lyrics, settings, seeds, and batch size).
 - Real Plenio exports with favorites, search, playback, waveforms, seeking, and downloads.
+- In-studio ComfyUI start/stop controls, manual memory release, and queue-aware idle unloading (30 minutes by default).
 - Local operation and locally bundled fonts; no hosted account required.
 
 ## One-click portable install (Windows / NVIDIA)
@@ -102,6 +103,14 @@ npm run test:playback
 ```
 
 Browser generation tests intercept submissions; backend tests mock the engine. They never queue GPU renders. The template in `ci/github-checks.yml` builds the frontend and runs backend tests without models or a private library. To enable GitHub Actions, copy it to `.github/workflows/checks.yml` using credentials with workflow permission. A complete render on a new machine still depends on compatible ComfyUI, installed models, and sufficient GPU memory.
+
+## Engine controls and idle memory
+
+Below the GPU meter, **Start engine** / **Stop engine** controls only the configured local ComfyUI process; GimmeMusic and its library stay open. Stopping is blocked while any ComfyUI job is running or queued. **Free memory** requests ComfyUI's model unload and cache release without stopping the server; models reload when needed.
+
+The idle timer defaults to **30 minutes**, with Off / 15 / 30 / 60 minute settings saved locally. Mouse, keyboard and scrolling activity in either studio or ComfyUI resets it. Status polling does not. Queued and running jobs reset the timer, including jobs submitted directly in ComfyUI. The monitor runs while the GimmeMusic server is running, even if its browser tab is closed.
+
+Setup installs the small local `GimmeMusic-Bridge` extension; existing installations receive it when the studio starts. Restart ComfyUI and refresh its browser tab once to load activity tracking. Automatic unloading pauses if that bridge is unavailable rather than assuming ComfyUI is idle. No saved workflow is changed. Start failures are logged in `data/engine.stderr.log`.
 
 ## Building a portable release
 

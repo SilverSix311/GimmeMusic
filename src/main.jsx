@@ -12,6 +12,7 @@ import { AudioLines, Disc3, Library, Heart, ListMusic, ArrowUpRight, ChevronDown
 import './style.css';
 import Workbench from './Workbench';
 import Projects from './Projects';
+import EngineControls from './EngineControls';
 import BriefTemplate from './BriefTemplate';
 
 const timeLabel = (seconds) => `${Math.floor((seconds || 0) / 60)}:${String(Math.floor((seconds || 0) % 60)).padStart(2, '0')}`;
@@ -125,6 +126,7 @@ function App() {
       <div className="sidebar-session"><div className="session-icon"><Disc3 size={24}/></div><strong>A little chaos.<br/>A lot of possibility.</strong><p>Your ideas. Your machine.<br/>Your next favorite track.</p><button onClick={()=>setHelp(true)}>Meet your studio <ArrowUpRight size={13}/></button></div>
       <div className="sidebar-bottom">
         <div className="hardware"><div className="hardware-title"><Cpu size={15}/><strong>{gpu?.name?.replace('cuda:0 ','').replace('NVIDIA GeForce ','').split(' : ')[0] || 'Local engine'}</strong><span className={`dot ${status.online?'':'offline'}`}/></div><div className="meter-label"><span>GPU memory</span><span>{gpuTotal?`${(gpuUsed/2**30).toFixed(1)} / ${(gpuTotal/2**30).toFixed(0)} GB`:'—'}</span></div><div className="meter"><i style={{width:gpuTotal?`${gpuUsed/gpuTotal*100}%`:'0%'}}/></div><div className="engine-status"><span className={`dot ${status.online?'':'offline'}`}/>{status.online?'Plenio connected':'Plenio offline'}</div></div>
+        <EngineControls status={status} api={api} notify={notify}/>
         <a className="engine-link" href={status.engine_url||"http://127.0.0.1:8189"} target="_blank" rel="noreferrer"><Settings2 size={16}/> Open ComfyUI <ArrowUpRight size={13}/></a>
         <div className="user"><img src="/assets/logo.png" alt=""/><div>Gimmesamoa<small>LOCAL STUDIO</small></div><IconButton icon={CircleHelp} label="Studio help" onClick={()=>setHelp(true)}/></div>
       </div>

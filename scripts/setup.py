@@ -32,6 +32,9 @@ def setup(comfy, engine_url, skip_dependencies=False, portable=False):
         subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(ROOT / 'requirements.txt'), '-r', str(target / 'requirements.txt'), 'faster-whisper', 'rotary-embedding-torch'], check=True)
         if sys.platform == 'win32':
             subprocess.run([sys.executable, '-m', 'pip', 'install', 'nvidia-cublas-cu12'], check=True)
+    bridge = ROOT / 'comfy_bridge'
+    if bridge.is_dir():
+        shutil.copytree(bridge, comfy / 'custom_nodes/GimmeMusic-Bridge', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__'))
     # Spawned transcription workers must also be able to import Plenio.
     for pth in Path(sys.executable).parent.glob('python*._pth'):
         lines = pth.read_text().splitlines()
